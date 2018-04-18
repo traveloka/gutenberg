@@ -30,7 +30,6 @@ const DocumentSidebarTvlk = () => (
 		<SettingsHeader sidebarName={ SIDEBAR_NAME } />
 		<Panel>
 			<PostStatusTvlk />
-			<PostStatus />
 			<MetaBoxes location="side"/>
 			<FeaturedImage />
 			<DocumentOutlinePanel />
