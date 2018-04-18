@@ -35,6 +35,7 @@ import EditorModeKeyboardShortcuts from '../keyboard-shortcuts';
 import MetaBoxes from '../meta-boxes';
 import { getMetaBoxContainer } from '../../utils/meta-boxes';
 import Sidebar from '../sidebar';
+import DocumentSidebarTvlk from '../sidebar/document-sidebar-tvlk';
 
 function Layout( {
 	mode,
@@ -86,7 +87,8 @@ function Layout( {
 					forceIsSaving={ isSaving }
 				/>
 			) }
-			<DocumentSidebar />
+
+			<DocumentSidebarTvlk />
 			<BlockSidebar />
 			<Sidebar.Slot />
 			{
