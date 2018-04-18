@@ -385,11 +385,16 @@ function gutenberg_add_edit_link( $actions, $post ) {
 	$edit_offset = array_search( 'edit', array_keys( $actions ), true );
 	$actions     = array_merge(
 		array_slice( $actions, 0, $edit_offset + 1 ),
-		// $edit_action, //Disable class editor
+		$edit_action,
 		array_slice( $actions, $edit_offset + 1 )
 	);
 
-	return $actions;
+
+	//show only required actions for user
+	$filtered_actions[] = $actions['edit'];
+	$filtered_actions[] = $actions['trash'];
+
+	return $filtered_actions;
 }
 
 /**
