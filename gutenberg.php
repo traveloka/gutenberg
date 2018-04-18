@@ -385,7 +385,7 @@ function gutenberg_add_edit_link( $actions, $post ) {
 	$edit_offset = array_search( 'edit', array_keys( $actions ), true );
 	$actions     = array_merge(
 		array_slice( $actions, 0, $edit_offset + 1 ),
-		$edit_action,
+		// $edit_action, //Disable class editor
 		array_slice( $actions, $edit_offset + 1 )
 	);
 
