@@ -30,9 +30,9 @@ const DocumentSidebarTvlk = () => (
 		<SettingsHeader sidebarName={ SIDEBAR_NAME } />
 		<Panel>
 			<PostStatusTvlk />
-			<MetaBoxes location="side"/>
 			<FeaturedImage />
 			<DocumentOutlinePanel />
+			<MetaBoxes location="side" usePanel/>
 		</Panel>
 	</Sidebar>
 );
