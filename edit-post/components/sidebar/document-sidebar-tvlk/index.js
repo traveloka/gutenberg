@@ -31,6 +31,8 @@ const DocumentSidebarTvlk = () => (
 		<Panel>
 			<PostStatusTvlk />
 			<FeaturedImage />
+			<PostTaxonomies />
+			<PageAttributes />
 			<DocumentOutlinePanel />
 			<MetaBoxes location="side" usePanel/>
 		</Panel>
