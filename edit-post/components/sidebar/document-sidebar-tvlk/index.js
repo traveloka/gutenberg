@@ -29,8 +29,8 @@ const DocumentSidebarTvlk = () => (
 	>
 		<SettingsHeader sidebarName={ SIDEBAR_NAME } />
 		<Panel>
-			<MetaBoxes location="side"/>
 			<PostStatusTvlk />
+			<MetaBoxes location="side"/>
 			<FeaturedImage />
 			<PostTaxonomies />
 			<PageAttributes />
