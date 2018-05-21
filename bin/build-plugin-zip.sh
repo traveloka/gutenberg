@@ -31,7 +31,7 @@ if [ ! -z "$changed" ]; then
 fi
 
 branch="$(git rev-parse --abbrev-ref HEAD)"
-if [ "$branch" != 'master' ]; then
+if [ "$branch" != 'tvlk_2.7' ]; then
 	echo "WARNING: You should probably be running this script against the"
 	echo "         'master' branch (current: '$branch')"
 	echo
