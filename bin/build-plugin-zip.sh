@@ -40,8 +40,8 @@ fi
 
 # Remove ignored files to reset repository to pristine condition. Previous test
 # ensures that changed files abort the plugin build.
-status "Cleaning working directory..."
-git clean -xdf
+#status "Cleaning working directory..."
+#git clean -xdf
 
 # Download all vendor scripts
 status "Downloading remote vendor scripts..."
