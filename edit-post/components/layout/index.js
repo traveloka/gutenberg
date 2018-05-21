@@ -27,7 +27,7 @@ import { withViewportMatch } from '@wordpress/viewport';
  */
 import './style.scss';
 import BlockSidebar from '../sidebar/block-sidebar';
-import DocumentSidebar from '../sidebar/document-sidebar';
+import DocumentSidebar from '../sidebar/document-sidebar-tvlk';
 import Header from '../header';
 import TextEditor from '../text-editor';
 import VisualEditor from '../visual-editor';
