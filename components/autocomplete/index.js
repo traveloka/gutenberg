@@ -42,6 +42,13 @@ const { ENTER, ESCAPE, UP, DOWN, LEFT, RIGHT, SPACE } = keycodes;
  */
 
 /**
+ * @callback FnIsOptionDisabled
+ * @param {CompleterOption} option a completer option.
+ *
+ * @returns {string[]} whether or not the given option is disabled.
+ */
+
+/**
  * @callback FnGetOptionLabel
  * @param {CompleterOption} option a completer option.
  *
@@ -92,6 +99,7 @@ const { ENTER, ESCAPE, UP, DOWN, LEFT, RIGHT, SPACE } = keycodes;
  * @property {String} triggerPrefix the prefix that will display the menu.
  * @property {(CompleterOption[]|FnGetOptions)} options the completer options or a function to get them.
  * @property {?FnGetOptionKeywords} getOptionKeywords get the keywords for a given option.
+ * @property {?FnIsOptionDisabled} isOptionDisabled get whether or not the given option is disabled.
  * @property {FnGetOptionLabel} getOptionLabel get the label for a given option.
  * @property {?FnAllowNode} allowNode filter the allowed text nodes in the autocomplete.
  * @property {?FnAllowContext} allowContext filter the context under which the autocomplete activates.
@@ -151,7 +159,7 @@ function onlyTextNode( node ) {
 }
 
 /**
- * Find the index of the last charater in the text that is whitespace.
+ * Find the index of the last character in the text that is whitespace.
  *
  * @param {string} text The text to search.
  *
@@ -241,6 +249,10 @@ export class Autocomplete extends Component {
 		const { onReplace } = this.props;
 		const { open, range, query } = this.state;
 		const { getOptionCompletion } = open || {};
+
+		if ( option.isDisabled ) {
+			return;
+		}
 
 		this.reset();
 
@@ -345,6 +357,7 @@ export class Autocomplete extends Component {
 				value: optionData,
 				label: completer.getOptionLabel( optionData ),
 				keywords: completer.getOptionKeywords ? completer.getOptionKeywords( optionData ) : [],
+				isDisabled: completer.isOptionDisabled ? completer.isOptionDisabled( optionData ) : false,
 			} ) );
 
 			const filteredOptions = filterOptions( this.state.search, keyedOptions );
@@ -535,18 +548,12 @@ export class Autocomplete extends Component {
 		event.stopPropagation();
 	}
 
-	getWordRect( { isLeft, isRight } ) {
+	getWordRect() {
 		const { range } = this.state;
 		if ( ! range ) {
 			return;
 		}
-		if ( isLeft ) {
-			const rects = range.getClientRects();
-			return rects[ 0 ];
-		} else if ( isRight ) {
-			const rects = range.getClientRects();
-			return rects[ rects.length - 1 ];
-		}
+
 		return range.getBoundingClientRect();
 	}
 
@@ -610,6 +617,7 @@ export class Autocomplete extends Component {
 									id={ `components-autocomplete-item-${ instanceId }-${ option.key }` }
 									role="option"
 									aria-selected={ index === selectedIndex }
+									disabled={ option.isDisabled }
 									className={ classnames( 'components-autocomplete__result', className, {
 										'is-selected': index === selectedIndex,
 									} ) }

@@ -10,6 +10,7 @@ import {
 } from '@wordpress/editor';
 import { withDispatch, withSelect } from '@wordpress/data';
 import { compose } from '@wordpress/element';
+import { DotTip } from '@wordpress/nux';
 
 /**
  * Internal dependencies
@@ -17,6 +18,7 @@ import { compose } from '@wordpress/element';
 import './style.scss';
 import MoreMenu from './more-menu';
 import HeaderToolbar from './header-toolbar';
+import PinnedPlugins from './pinned-plugins';
 
 function Header( {
 	isEditorSidebarOpened,
@@ -52,12 +54,17 @@ function Header( {
 					/>
 					<IconButton
 						icon="admin-generic"
+						label={ __( 'Settings' ) }
 						onClick={ toggleGeneralSidebar }
 						isToggled={ isEditorSidebarOpened }
-						label={ __( 'Settings' ) }
 						aria-expanded={ isEditorSidebarOpened }
-					/>
-					<MoreMenu key="more-menu" />
+					>
+						<DotTip id="core/editor.settings">
+							{ __( 'You’ll find more settings for your page and blocks in the sidebar. Click ‘Settings’ to open it.' ) }
+						</DotTip>
+					</IconButton>
+					<PinnedPlugins.Slot />
+					<MoreMenu />
 				</div>
 			) }
 		</div>

@@ -10,12 +10,12 @@ import tinymce from 'tinymce';
  */
 import { Component, findDOMNode, Fragment, compose } from '@wordpress/element';
 import {
-	keycodes,
 	focus,
 	isTextField,
 	placeCaretAtHorizontalEdge,
 	placeCaretAtVerticalEdge,
-} from '@wordpress/utils';
+} from '@wordpress/dom';
+import { keycodes } from '@wordpress/utils';
 import {
 	createBlock,
 	cloneBlock,
@@ -86,8 +86,7 @@ export class BlockListBlock extends Component {
 	}
 
 	createInnerBlockList( uid ) {
-		const { renderBlockMenu } = this.props;
-		return createInnerBlockList( uid, renderBlockMenu );
+		return createInnerBlockList( uid );
 	}
 
 	/**
@@ -403,15 +402,16 @@ export class BlockListBlock extends Component {
 			uid,
 			rootUID,
 			layout,
-			renderBlockMenu,
 			isSelected,
 			isMultiSelected,
 			isFirstMultiSelected,
-			isLastInSelection,
 			isTypingWithinBlock,
 			isMultiSelecting,
 			hoverArea,
 			isLargeViewport,
+			isEmptyDefaultBlock,
+			isPreviousBlockADefaultEmptyBlock,
+			hasSelectedInnerBlock,
 		} = this.props;
 		const isHovered = this.state.isHovered && ! isMultiSelecting;
 		const { name: blockName, isValid } = block;
@@ -423,33 +423,29 @@ export class BlockListBlock extends Component {
 
 		// If the block is selected and we're typing the block should not appear.
 		// Empty paragraph blocks should always show up as unselected.
-		const isEmptyDefaultBlock = isUnmodifiedDefaultBlock( block );
-		const isSelectedNotTyping = isSelected && ! isTypingWithinBlock;
 		const showEmptyBlockSideInserter = ( isSelected || isHovered ) && isEmptyDefaultBlock;
-		const shouldAppearSelected = ! showEmptyBlockSideInserter && isSelectedNotTyping;
+		const showSideInserter = ( isSelected || isHovered ) && isEmptyDefaultBlock;
+		const shouldAppearSelected = ! showSideInserter && ( isSelected || hasSelectedInnerBlock ) && ! isTypingWithinBlock;
 		// We render block movers and block settings to keep them tabbale even if hidden
 		const shouldRenderMovers = ( isSelected || hoverArea === 'left' ) && ! showEmptyBlockSideInserter && ! isMultiSelecting && ! isMultiSelected && ! isTypingWithinBlock;
 		const shouldRenderBlockSettings = ( isSelected || hoverArea === 'right' ) && ! isMultiSelecting && ! isMultiSelected && ! isTypingWithinBlock;
-		const shouldShowBreadcrumb = isHovered;
-		const shouldShowContextualToolbar = shouldAppearSelected && isValid && ( ! hasFixedToolbar || ! isLargeViewport );
+		const shouldShowBreadcrumb = isHovered && ! isEmptyDefaultBlock;
+		const shouldShowContextualToolbar = ! showSideInserter && isSelected && ! isTypingWithinBlock && isValid && ( ! hasFixedToolbar || ! isLargeViewport );
 		const shouldShowMobileToolbar = shouldAppearSelected;
 		const { error, dragging } = this.state;
 
 		// Insertion point can only be made visible when the side inserter is
 		// not present, and either the block is at the extent of a selection or
 		// is the first block in the top-level list rendering.
-		const shouldShowInsertionPoint = (
-			( ! isMultiSelected && ! isFirst ) ||
-			( isMultiSelected && isLastInSelection ) ||
-			( isFirst && ! rootUID && ! isEmptyDefaultBlock )
-		);
+		const shouldShowInsertionPoint = ( isMultiSelected && isFirst ) || ! isMultiSelected;
+		const canShowInBetweenInserter = ! isEmptyDefaultBlock && ! isPreviousBlockADefaultEmptyBlock;
 
 		// Generate the wrapper class names handling the different states of the block.
 		const wrapperClassName = classnames( 'editor-block-list__block', {
 			'has-warning': ! isValid || !! error,
 			'is-selected': shouldAppearSelected,
 			'is-multi-selected': isMultiSelected,
-			'is-hovered': isHovered,
+			'is-hovered': isHovered && ! isEmptyDefaultBlock,
 			'is-shared': isSharedBlock( blockType ),
 			'is-hidden': dragging,
 			'is-typing': isTypingWithinBlock,
@@ -513,6 +509,7 @@ export class BlockListBlock extends Component {
 						uid={ uid }
 						rootUID={ rootUID }
 						layout={ layout }
+						canShowInserter={ canShowInBetweenInserter }
 					/>
 				) }
 				<BlockDropZone
@@ -534,7 +531,6 @@ export class BlockListBlock extends Component {
 					<BlockSettingsMenu
 						uids={ uid }
 						rootUID={ rootUID }
-						renderBlockMenu={ renderBlockMenu }
 						isHidden={ ! ( isHovered || isSelected ) || hoverArea !== 'right' }
 					/>
 				) }
@@ -582,7 +578,6 @@ export class BlockListBlock extends Component {
 						<BlockMobileToolbar
 							rootUID={ rootUID }
 							uid={ uid }
-							renderBlockMenu={ renderBlockMenu }
 						/>
 					) }
 				</IgnoreNestedEvents>
@@ -621,30 +616,36 @@ const applyWithSelect = withSelect( ( select, { uid, rootUID } ) => {
 		getBlockMode,
 		isSelectionEnabled,
 		getSelectedBlocksInitialCaretPosition,
-		getBlockSelectionEnd,
 		getEditorSettings,
+		hasSelectedInnerBlock,
 	} = select( 'core/editor' );
 	const isSelected = isBlockSelected( uid );
+	const isParentOfSelectedBlock = hasSelectedInnerBlock( uid );
 	const { templateLock, hasFixedToolbar } = getEditorSettings();
+	const block = getBlock( uid );
+	const previousBlockUid = getPreviousBlockUid( uid );
+	const previousBlock = getBlock( previousBlockUid );
 
 	return {
-		previousBlockUid: getPreviousBlockUid( uid ),
 		nextBlockUid: getNextBlockUid( uid ),
-		block: getBlock( uid ),
 		isMultiSelected: isBlockMultiSelected( uid ),
 		isFirstMultiSelected: isFirstMultiSelectedBlock( uid ),
 		isMultiSelecting: isMultiSelecting(),
-		isLastInSelection: getBlockSelectionEnd() === uid,
+		hasSelectedInnerBlock: isParentOfSelectedBlock,
 		// We only care about this prop when the block is selected
 		// Thus to avoid unnecessary rerenders we avoid updating the prop if the block is not selected.
-		isTypingWithinBlock: isSelected && isTyping(),
+		isTypingWithinBlock: ( isSelected || isParentOfSelectedBlock ) && isTyping(),
 		order: getBlockIndex( uid, rootUID ),
 		meta: getEditedPostAttribute( 'meta' ),
 		mode: getBlockMode( uid ),
 		isSelectionEnabled: isSelectionEnabled(),
 		initialPosition: getSelectedBlocksInitialCaretPosition(),
-		isSelected,
+		isEmptyDefaultBlock: block && isUnmodifiedDefaultBlock( block ),
+		isPreviousBlockADefaultEmptyBlock: previousBlock && isUnmodifiedDefaultBlock( previousBlock ),
 		isLocked: !! templateLock,
+		previousBlockUid,
+		block,
+		isSelected,
 		hasFixedToolbar,
 	};
 } );

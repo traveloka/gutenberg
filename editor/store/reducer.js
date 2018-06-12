@@ -200,7 +200,7 @@ const withInnerBlocksRemoveCascade = ( reducer ) => ( state, action ) => {
  * Handles the following state keys:
  *  - edits: an object describing changes to be made to the current post, in
  *           the format accepted by the WP REST API
- *  - blocksByUid: post content blocks keyed by UID
+ *  - blocksByUID: post content blocks keyed by UID
  *  - blockOrder: object where each key is a UID, its value an array of uids
  *                representing the order of its inner blocks
  *
@@ -277,7 +277,7 @@ export const editor = flow( [
 		return state;
 	},
 
-	blocksByUid( state = {}, action ) {
+	blocksByUID( state = {}, action ) {
 		switch ( action.type ) {
 			case 'RESET_BLOCKS':
 			case 'SETUP_EDITOR_STATE':
@@ -559,6 +559,16 @@ export function currentPost( state = {}, action ) {
 			}
 
 			return mapValues( post, getPostRawValue );
+
+		case 'RESET_AUTOSAVE':
+			// A post is no longer auto-draft (now draft) when autosave occurs.
+			if ( state.status === 'auto-draft' ) {
+				return {
+					...state,
+					status: 'draft',
+				};
+			}
+			break;
 	}
 
 	return state;
@@ -866,11 +876,12 @@ export function preferences( state = PREFERENCES_DEFAULTS, action ) {
  */
 export function saving( state = {}, action ) {
 	switch ( action.type ) {
-		case 'REQUEST_POST_UPDATE':
+		case 'REQUEST_POST_UPDATE_START':
 			return {
 				requesting: true,
 				successful: false,
 				error: null,
+				isAutosave: action.isAutosave,
 			};
 
 		case 'REQUEST_POST_UPDATE_SUCCESS':
@@ -1056,6 +1067,30 @@ export const blockListSettings = ( state = {}, action ) => {
 	return state;
 };
 
+/**
+ * Reducer returning the most recent autosave.
+ *
+ * @param  {Object} state  The autosave object.
+ * @param  {Object} action Dispatched action.
+ *
+ * @return {Object} Updated state.
+ */
+export function autosave( state = null, action ) {
+	switch ( action.type ) {
+		case 'RESET_AUTOSAVE':
+			const { post } = action;
+			const [ title, excerpt, content ] = [
+				'title',
+				'excerpt',
+				'content',
+			].map( ( field ) => getPostRawValue( post[ field ] ) );
+
+			return { title, excerpt, content };
+	}
+
+	return state;
+}
+
 export default optimist( combineReducers( {
 	editor,
 	currentPost,
@@ -1070,5 +1105,6 @@ export default optimist( combineReducers( {
 	notices,
 	sharedBlocks,
 	template,
+	autosave,
 	settings,
 } ) );
