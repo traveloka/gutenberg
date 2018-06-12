@@ -28,13 +28,14 @@ const DocumentSidebar = () => (
 		<SettingsHeader sidebarName={ SIDEBAR_NAME } />
 		<Panel>
 			<PostStatus />
-			<LastRevision />
+			<MetaBoxes location="side"/>
+			{/* <LastRevision /> */}
 			<PostTaxonomies />
 			<FeaturedImage />
-			<PostExcerpt />
-			<DiscussionPanel />
-			<PageAttributes />
-			<MetaBoxes location="side" usePanel />
+			{/* <PostExcerpt /> */}
+			{/* <DiscussionPanel /> */}
+			{/* <PageAttributes /> */}
+			
 		</Panel>
 	</Sidebar>
 );
