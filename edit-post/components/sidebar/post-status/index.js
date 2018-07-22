@@ -33,9 +33,9 @@ function PostStatus( { isOpened, onTogglePanel } ) {
 					<Fragment>
 						<PostVisibility />
 						<PostSchedule />
-						<PostFormat />
-						<PostSticky />
-						<PostPendingStatus />
+						{/* <PostFormat /> */}
+						{/* <PostSticky /> */}
+						{/* <PostPendingStatus /> */}
 						<PostAuthor />
 						{ fills }
 						<PostTrash />
