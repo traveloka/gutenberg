@@ -14,7 +14,7 @@ import {
 	withFallbackStyles,
 } from '@wordpress/components';
 import {
-	UrlInput,
+	URLInput,
 	RichText,
 	BlockControls,
 	BlockAlignmentToolbar,
@@ -100,8 +100,8 @@ class ButtonEdit extends Component {
 							}
 						) }
 						style={ {
-							backgroundColor: backgroundColor.class ? undefined : backgroundColor.value,
-							color: textColor.class ? undefined : textColor.value,
+							backgroundColor: backgroundColor.value,
+							color: textColor.value,
 						} }
 						keepPlaceholderOnFocus
 					/>
@@ -129,7 +129,7 @@ class ButtonEdit extends Component {
 						className="core-blocks-button__inline-link"
 						onSubmit={ ( event ) => event.preventDefault() }>
 						<Dashicon icon="admin-links" />
-						<UrlInput
+						<URLInput
 							value={ url }
 							onChange={ ( value ) => setAttributes( { url: value } ) }
 						/>
@@ -141,11 +141,4 @@ class ButtonEdit extends Component {
 	}
 }
 
-export default withColors( ( getColor, setColor, { attributes } ) => {
-	return {
-		backgroundColor: getColor( attributes.backgroundColor, attributes.customBackgroundColor, 'background-color' ),
-		setBackgroundColor: setColor( 'backgroundColor', 'customBackgroundColor' ),
-		textColor: getColor( attributes.textColor, attributes.customTextColor, 'color' ),
-		setTextColor: setColor( 'textColor', 'customTextColor' ),
-	};
-} )( ButtonEdit );
+export default withColors( 'backgroundColor', { textColor: 'color' } )( ButtonEdit );

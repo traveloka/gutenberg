@@ -32,10 +32,10 @@ const DocumentSidebar = () => (
 			{/* <LastRevision /> */}
 			<PostTaxonomies />
 			<FeaturedImage />
+
 			{/* <PostExcerpt /> */}
 			{/* <DiscussionPanel /> */}
-			{/* <PageAttributes /> */}
-			
+			{/* <PageAttributes /> */}			
 		</Panel>
 	</Sidebar>
 );
