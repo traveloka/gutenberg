@@ -3,6 +3,8 @@
  */
 const ExtractTextPlugin = require( 'extract-text-webpack-plugin' );
 const WebpackRTLPlugin = require( 'webpack-rtl-plugin' );
+const LiveReloadPlugin = require( 'webpack-livereload-plugin' );
+
 const { get } = require( 'lodash' );
 const { basename } = require( 'path' );
 
@@ -10,20 +12,26 @@ const { basename } = require( 'path' );
  * WordPress dependencies
  */
 const CustomTemplatedPathPlugin = require( '@wordpress/custom-templated-path-webpack-plugin' );
+const LibraryExportDefaultPlugin = require( '@wordpress/library-export-default-webpack-plugin' );
 
 // Main CSS loader for everything but blocks..
 const mainCSSExtractTextPlugin = new ExtractTextPlugin( {
-	filename: './[basename]/build/style.css',
+	filename: './build/[basename]/style.css',
 } );
 
 // CSS loader for styles specific to block editing.
 const editBlocksCSSPlugin = new ExtractTextPlugin( {
-	filename: './blocks/build/edit-blocks.css',
+	filename: './build/core-blocks/edit-blocks.css',
 } );
 
 // CSS loader for styles specific to blocks in general.
 const blocksCSSPlugin = new ExtractTextPlugin( {
-	filename: './blocks/build/style.css',
+	filename: './build/core-blocks/style.css',
+} );
+
+// CSS loader for default visual block styles.
+const themeBlocksCSSPlugin = new ExtractTextPlugin( {
+	filename: './build/core-blocks/theme.css',
 } );
 
 // Configuration for the ExtractTextPlugin.
@@ -33,16 +41,14 @@ const extractConfig = {
 		{
 			loader: 'postcss-loader',
 			options: {
-				plugins: [
-					require( 'autoprefixer' ),
-				],
+				plugins: require( './bin/packages/post-css-config' ),
 			},
 		},
 		{
 			loader: 'sass-loader',
 			query: {
 				includePaths: [ 'edit-post/assets/stylesheets' ],
-				data: '@import "colors"; @import "admin-schemes"; @import "breakpoints"; @import "variables"; @import "mixins"; @import "animations";@import "z-index";',
+				data: '@import "colors"; @import "breakpoints"; @import "variables"; @import "mixins"; @import "animations";@import "z-index";',
 				outputStyle: 'production' === process.env.NODE_ENV ?
 					'compressed' : 'nested',
 			},
@@ -62,32 +68,43 @@ const extractConfig = {
  */
 function camelCaseDash( string ) {
 	return string.replace(
-		/-([a-z])/,
+		/-([a-z])/g,
 		( match, letter ) => letter.toUpperCase()
 	);
 }
 
 const entryPointNames = [
-	'blocks',
 	'components',
-	'date',
 	'editor',
-	'element',
 	'utils',
-	'data',
-	'viewport',
-	'core-data',
-	'plugins',
 	'edit-post',
+	'core-blocks',
+	'nux',
 ];
 
-const packageNames = [
+const gutenbergPackages = [
+	'a11y',
+	'api-fetch',
+	'autop',
+	'blob',
+	'blocks',
+	'block-serialization-spec-parser',
+	'compose',
+	'core-data',
+	'data',
+	'date',
+	'deprecated',
+	'dom',
+	'dom-ready',
+	'element',
 	'hooks',
+	'html-entities',
 	'i18n',
-];
-
-const coreGlobals = [
-	'api-request',
+	'is-shallow-equal',
+	'keycodes',
+	'plugins',
+	'shortcode',
+	'viewport',
 ];
 
 const externals = {
@@ -102,8 +119,7 @@ const externals = {
 
 [
 	...entryPointNames,
-	...packageNames,
-	...coreGlobals,
+	...gutenbergPackages,
 ].forEach( ( name ) => {
 	externals[ `@wordpress/${ name }` ] = {
 		this: [ 'wp', camelCaseDash( name ) ],
@@ -119,13 +135,14 @@ const config = {
 			memo[ name ] = `./${ path }`;
 			return memo;
 		}, {} ),
-		packageNames.reduce( ( memo, packageName ) => {
-			memo[ packageName ] = `./node_modules/@wordpress/${ packageName }`;
+		gutenbergPackages.reduce( ( memo, packageName ) => {
+			const name = camelCaseDash( packageName );
+			memo[ name ] = `./packages/${ packageName }`;
 			return memo;
-		}, {} )
+		}, {} ),
 	),
 	output: {
-		filename: '[basename]/build/index.js',
+		filename: './build/[basename]/index.js',
 		path: __dirname,
 		library: [ 'wp', '[name]' ],
 		libraryTarget: 'this',
@@ -143,32 +160,38 @@ const config = {
 	module: {
 		rules: [
 			{
-				test: /\.pegjs/,
-				use: 'pegjs-loader',
-			},
-			{
 				test: /\.js$/,
-				exclude: /node_modules/,
+				exclude: [
+					/block-serialization-spec-parser/,
+					/node_modules/,
+				],
 				use: 'babel-loader',
 			},
 			{
 				test: /style\.s?css$/,
 				include: [
-					/blocks/,
+					/core-blocks/,
 				],
 				use: blocksCSSPlugin.extract( extractConfig ),
 			},
 			{
 				test: /editor\.s?css$/,
 				include: [
-					/blocks/,
+					/core-blocks/,
 				],
 				use: editBlocksCSSPlugin.extract( extractConfig ),
 			},
 			{
+				test: /theme\.s?css$/,
+				include: [
+					/core-blocks/,
+				],
+				use: themeBlocksCSSPlugin.extract( extractConfig ),
+			},
+			{
 				test: /\.s?css$/,
 				exclude: [
-					/blocks/,
+					/core-blocks/,
 				],
 				use: mainCSSExtractTextPlugin.extract( extractConfig ),
 			},
@@ -177,6 +200,7 @@ const config = {
 	plugins: [
 		blocksCSSPlugin,
 		editBlocksCSSPlugin,
+		themeBlocksCSSPlugin,
 		mainCSSExtractTextPlugin,
 		// Create RTL files with a -rtl suffix
 		new WebpackRTLPlugin( {
@@ -205,6 +229,12 @@ const config = {
 				return path;
 			},
 		} ),
+		new LibraryExportDefaultPlugin( [
+			'api-fetch',
+			'deprecated',
+			'dom-ready',
+			'is-shallow-equal',
+		].map( camelCaseDash ) ),
 	],
 	stats: {
 		children: false,
@@ -213,6 +243,10 @@ const config = {
 
 if ( config.mode !== 'production' ) {
 	config.devtool = process.env.SOURCEMAP || 'source-map';
+}
+
+if ( config.mode === 'development' ) {
+	config.plugins.push( new LiveReloadPlugin( { port: process.env.GUTENBERG_LIVE_RELOAD_PORT || 35729 } ) );
 }
 
 module.exports = config;

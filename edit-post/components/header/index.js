@@ -9,7 +9,8 @@ import {
 	PostPublishPanelToggle,
 } from '@wordpress/editor';
 import { withDispatch, withSelect } from '@wordpress/data';
-import { compose } from '@wordpress/element';
+import { compose } from '@wordpress/compose';
+import { DotTip } from '@wordpress/nux';
 
 /**
  * Internal dependencies
@@ -17,6 +18,7 @@ import { compose } from '@wordpress/element';
 import './style.scss';
 import MoreMenu from './more-menu';
 import HeaderToolbar from './header-toolbar';
+import PinnedPlugins from './pinned-plugins';
 
 function Header( {
 	isEditorSidebarOpened,
@@ -32,7 +34,8 @@ function Header( {
 	return (
 		<div
 			role="region"
-			aria-label={ __( 'Editor toolbar' ) }
+			/* translators: accessibility text for the top bar landmark region. */
+			aria-label={ __( 'Editor top bar' ) }
 			className="edit-post-header"
 			tabIndex="-1"
 		>
@@ -52,12 +55,17 @@ function Header( {
 					/>
 					<IconButton
 						icon="admin-generic"
+						label={ __( 'Settings' ) }
 						onClick={ toggleGeneralSidebar }
 						isToggled={ isEditorSidebarOpened }
-						label={ __( 'Settings' ) }
 						aria-expanded={ isEditorSidebarOpened }
-					/>
-					<MoreMenu key="more-menu" />
+					>
+						<DotTip id="core/editor.settings">
+							{ __( 'You’ll find more settings for your page and blocks in the sidebar. Click ‘Settings’ to open it.' ) }
+						</DotTip>
+					</IconButton>
+					<PinnedPlugins.Slot />
+					<MoreMenu />
 				</div>
 			) }
 		</div>
@@ -70,10 +78,16 @@ export default compose(
 		isPublishSidebarOpened: select( 'core/edit-post' ).isPublishSidebarOpened(),
 		hasActiveMetaboxes: select( 'core/edit-post' ).hasMetaBoxes(),
 		isSaving: select( 'core/edit-post' ).isSavingMetaBoxes(),
+		hasBlockSelection: !! select( 'core/editor' ).getBlockSelectionStart(),
 	} ) ),
-	withDispatch( ( dispatch ) => ( {
-		openGeneralSidebar: () => dispatch( 'core/edit-post' ).openGeneralSidebar( 'edit-post/document' ),
-		closeGeneralSidebar: dispatch( 'core/edit-post' ).closeGeneralSidebar,
-		togglePublishSidebar: dispatch( 'core/edit-post' ).togglePublishSidebar,
-	} ) ),
+	withDispatch( ( dispatch, { hasBlockSelection } ) => {
+		const { openGeneralSidebar, closeGeneralSidebar, togglePublishSidebar } = dispatch( 'core/edit-post' );
+		const sidebarToOpen = hasBlockSelection ? 'edit-post/block' : 'edit-post/document';
+		return {
+			openGeneralSidebar: () => openGeneralSidebar( sidebarToOpen ),
+			closeGeneralSidebar: closeGeneralSidebar,
+			togglePublishSidebar: togglePublishSidebar,
+			hasBlockSelection: undefined,
+		};
+	} ),
 )( Header );

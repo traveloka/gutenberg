@@ -6,7 +6,8 @@ import { mount, shallow } from 'enzyme';
 /**
  * WordPress dependencies
  */
-import { createBlock, registerCoreBlocks } from '@wordpress/blocks';
+import { createBlock } from '@wordpress/blocks';
+import { registerCoreBlocks } from '@wordpress/core-blocks';
 
 /**
  * Internal dependencies
@@ -21,15 +22,15 @@ describe( 'DocumentOutline', () => {
 	const paragraph = createBlock( 'core/paragraph' );
 	const headingH1 = createBlock( 'core/heading', {
 		content: 'Heading 1',
-		nodeName: 'H1',
+		level: 1,
 	} );
 	const headingParent = createBlock( 'core/heading', {
 		content: 'Heading parent',
-		nodeName: 'H2',
+		level: 2,
 	} );
 	const headingChild = createBlock( 'core/heading', {
 		content: 'Heading child',
-		nodeName: 'H3',
+		level: 3,
 	} );
 
 	const nestedHeading = createBlock( 'core/columns', undefined, [ headingChild ] );

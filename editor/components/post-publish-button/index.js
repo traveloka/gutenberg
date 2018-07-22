@@ -1,69 +1,77 @@
 /**
  * External dependencies
  */
-import classnames from 'classnames';
 import { noop, get } from 'lodash';
 
 /**
  * WordPress dependencies
  */
-import { Button, withAPIData } from '@wordpress/components';
-import { compose } from '@wordpress/element';
+import { Button } from '@wordpress/components';
+import { Component, createRef } from '@wordpress/element';
 import { withSelect, withDispatch } from '@wordpress/data';
+import { compose } from '@wordpress/compose';
 
 /**
  * Internal dependencies
  */
-import './style.scss';
 import PublishButtonLabel from './label';
-
-export function PostPublishButton( {
-	isSaving,
-	onStatusChange,
-	onSave,
-	isBeingScheduled,
-	visibility,
-	isPublishable,
-	isSaveable,
-	user,
-	onSubmit = noop,
-	forceIsSaving,
-} ) {
-	const isButtonEnabled = user.data && ! isSaving && isPublishable && isSaveable;
-	const isContributor = ! get( user.data, [ 'post_type_capabilities', 'publish_posts' ], false );
-
-	let publishStatus;
-	if ( isContributor ) {
-		publishStatus = 'pending';
-	} else if ( isBeingScheduled ) {
-		publishStatus = 'future';
-	} else if ( visibility === 'private' ) {
-		publishStatus = 'private';
-	} else {
-		publishStatus = 'publish';
+export class PostPublishButton extends Component {
+	constructor( props ) {
+		super( props );
+		this.buttonNode = createRef();
+	}
+	componentDidMount() {
+		if ( this.props.focusOnMount ) {
+			this.buttonNode.current.focus();
+		}
 	}
 
-	const className = classnames( 'editor-post-publish-button', {
-		'is-saving': isSaving,
-	} );
+	render() {
+		const {
+			isSaving,
+			onStatusChange,
+			onSave,
+			isBeingScheduled,
+			visibility,
+			isPublishable,
+			isSaveable,
+			hasPublishAction,
+			onSubmit = noop,
+			forceIsSaving,
+		} = this.props;
+		const isButtonEnabled = isPublishable && isSaveable;
 
-	const onClick = () => {
-		onSubmit();
-		onStatusChange( publishStatus );
-		onSave();
-	};
+		let publishStatus;
+		if ( ! hasPublishAction ) {
+			publishStatus = 'pending';
+		} else if ( isBeingScheduled ) {
+			publishStatus = 'future';
+		} else if ( visibility === 'private' ) {
+			publishStatus = 'private';
+		} else {
+			publishStatus = 'publish';
+		}
 
-	return (
-		<Button
-			isPrimary
-			isLarge
-			onClick={ onClick }
-			disabled={ ! isButtonEnabled }
-			className={ className }
-		>
-			<PublishButtonLabel forceIsSaving={ forceIsSaving } />
-		</Button>
-	);
+		const onClick = () => {
+			onSubmit();
+			onStatusChange( publishStatus );
+			onSave();
+		};
+
+		return (
+			<Button
+				ref={ this.buttonNode }
+				className="editor-post-publish-button"
+				isPrimary
+				isLarge
+				onClick={ onClick }
+				disabled={ ! isButtonEnabled }
+				isBusy={ isSaving }
+			>
+				<PublishButtonLabel forceIsSaving={ forceIsSaving } />
+			</Button>
+		);
+	}
 }
 
 export default compose( [
@@ -74,6 +82,7 @@ export default compose( [
 			getEditedPostVisibility,
 			isEditedPostSaveable,
 			isEditedPostPublishable,
+			getCurrentPost,
 			getCurrentPostType,
 		} = select( 'core/editor' );
 		return {
@@ -82,6 +91,7 @@ export default compose( [
 			visibility: getEditedPostVisibility(),
 			isSaveable: isEditedPostSaveable(),
 			isPublishable: forceIsDirty || isEditedPostPublishable(),
+			hasPublishAction: get( getCurrentPost(), [ '_links', 'wp:action-publish' ], false ),
 			postType: getCurrentPostType(),
 		};
 	} ),
@@ -90,13 +100,6 @@ export default compose( [
 		return {
 			onStatusChange: ( status ) => editPost( { status } ),
 			onSave: savePost,
-		};
-	} ),
-	withAPIData( ( props ) => {
-		const { postType } = props;
-
-		return {
-			user: `/wp/v2/users/me?post_type=${ postType }&context=edit`,
 		};
 	} ),
 ] )( PostPublishButton );

@@ -1,20 +1,14 @@
 /**
- * External dependencies
- */
-import classnames from 'classnames';
-
-/**
  * WordPress dependencies
  */
-import { compose, Component } from '@wordpress/element';
-import { Dashicon, Tooltip, Toolbar, Button } from '@wordpress/components';
-import { withDispatch, withSelect } from '@wordpress/data';
-import { __ } from '@wordpress/i18n';
+import { Component, Fragment } from '@wordpress/element';
+import { Toolbar } from '@wordpress/components';
+import { withSelect } from '@wordpress/data';
+import { compose } from '@wordpress/compose';
 
 /**
  * Internal dependencies
  */
-import NavigableToolbar from '../navigable-toolbar';
 import BlockTitle from '../block-title';
 
 /**
@@ -22,8 +16,8 @@ import BlockTitle from '../block-title';
  * descends from a root block, a button is displayed enabling the user to select
  * the root block.
  *
- * @param {string}   props.uid             UID of block.
- * @param {string}   props.rootUID         UID of block's root.
+ * @param {string}   props.clientId        Client ID of block.
+ * @param {string}   props.rootClientId    Client ID of block's root.
  * @param {Function} props.selectRootBlock Callback to select root block.
  */
 export class BlockBreadcrumb extends Component {
@@ -54,47 +48,31 @@ export class BlockBreadcrumb extends Component {
 	}
 
 	render( ) {
-		const { uid, rootUID, selectRootBlock, isHidden } = this.props;
-		const { isFocused } = this.state;
+		const { clientId, rootClientId } = this.props;
 
 		return (
-			<NavigableToolbar className={ classnames( 'editor-block-list__breadcrumb', {
-				'is-visible': ! isHidden || isFocused,
-			} ) }>
+			<div className={ 'editor-block-list__breadcrumb' }>
 				<Toolbar>
-					{ rootUID && (
-						<Tooltip text={ __( 'Select parent block' ) }>
-							<Button
-								onClick={ selectRootBlock }
-								onFocus={ this.onFocus }
-								onBlur={ this.onBlur }
-							>
-								<Dashicon icon="arrow-left-alt" uid={ uid } />
-							</Button>
-						</Tooltip>
+					{ rootClientId && (
+						<Fragment>
+							<BlockTitle clientId={ rootClientId } />
+							<span className="editor-block-list__descendant-arrow" />
+						</Fragment>
 					) }
-					<BlockTitle uid={ uid } />
+					<BlockTitle clientId={ clientId } />
 				</Toolbar>
-			</NavigableToolbar>
+			</div>
 		);
 	}
 }
 
 export default compose( [
 	withSelect( ( select, ownProps ) => {
-		const { getBlockRootUID } = select( 'core/editor' );
-		const { uid } = ownProps;
+		const { getBlockRootClientId } = select( 'core/editor' );
+		const { clientId } = ownProps;
 
 		return {
-			rootUID: getBlockRootUID( uid ),
-		};
-	} ),
-	withDispatch( ( dispatch, ownProps ) => {
-		const { rootUID } = ownProps;
-		const { selectBlock } = dispatch( 'core/editor' );
-
-		return {
-			selectRootBlock: () => selectBlock( rootUID ),
+			rootClientId: getBlockRootClientId( clientId ),
 		};
 	} ),
 ] )( BlockBreadcrumb );

@@ -2,9 +2,10 @@
  * WordPress dependencies
  */
 import { withDispatch, withSelect } from '@wordpress/data';
-import { Component, compose } from '@wordpress/element';
+import { Component } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
 import { Button } from '@wordpress/components';
+import { compose } from '@wordpress/compose';
 
 /**
  * Internal Dependencies
@@ -29,7 +30,7 @@ class PostPermalinkEditor extends Component {
 
 		this.props.onSave();
 
-		if ( ! postName || postName === this.props.postName ) {
+		if ( postName === this.props.postName ) {
 			return;
 		}
 
@@ -62,7 +63,7 @@ class PostPermalinkEditor extends Component {
 						aria-label={ __( 'Edit post permalink' ) }
 						value={ editedPostName }
 						onChange={ ( event ) => this.setState( { editedPostName: event.target.value } ) }
-						required
+						type="text"
 						autoFocus
 					/>
 					<span className="editor-post-permalink-editor__suffix">

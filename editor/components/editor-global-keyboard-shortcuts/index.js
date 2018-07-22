@@ -1,15 +1,16 @@
 /**
  * External dependencies
  */
-import { first, last } from 'lodash';
+import { first, last, some } from 'lodash';
 
 /**
  * WordPress dependencies
  */
-import { Component, Fragment, compose } from '@wordpress/element';
+import { Component, Fragment } from '@wordpress/element';
 import { KeyboardShortcuts } from '@wordpress/components';
 import { withSelect, withDispatch } from '@wordpress/data';
-import { withEditorSettings } from '@wordpress/blocks';
+import { rawShortcut } from '@wordpress/keycodes';
+import { compose } from '@wordpress/compose';
 
 class EditorGlobalKeyboardShortcuts extends Component {
 	constructor() {
@@ -23,13 +24,14 @@ class EditorGlobalKeyboardShortcuts extends Component {
 	}
 
 	selectAll( event ) {
-		const { uids, onMultiSelect } = this.props;
+		const { clientIds, onMultiSelect } = this.props;
 		event.preventDefault();
-		onMultiSelect( first( uids ), last( uids ) );
+		onMultiSelect( first( clientIds ), last( clientIds ) );
 	}
 
 	undoOrRedo( event ) {
 		const { onRedo, onUndo } = this.props;
+
 		if ( event.shiftKey ) {
 			onRedo();
 		} else {
@@ -45,11 +47,11 @@ class EditorGlobalKeyboardShortcuts extends Component {
 	}
 
 	deleteSelectedBlocks( event ) {
-		const { multiSelectedBlockUids, onRemove, isLocked } = this.props;
-		if ( multiSelectedBlockUids.length ) {
+		const { multiSelectedBlockClientIds, onRemove, isLocked } = this.props;
+		if ( multiSelectedBlockClientIds.length ) {
 			event.preventDefault();
 			if ( ! isLocked ) {
-				onRemove( multiSelectedBlockUids );
+				onRemove( multiSelectedBlockClientIds );
 			}
 		}
 	}
@@ -61,6 +63,7 @@ class EditorGlobalKeyboardShortcuts extends Component {
 		const { hasMultiSelection, clearSelectedBlock } = this.props;
 		if ( hasMultiSelection ) {
 			clearSelectedBlock();
+			window.getSelection().removeAllRanges();
 		}
 	}
 
@@ -69,9 +72,9 @@ class EditorGlobalKeyboardShortcuts extends Component {
 			<Fragment>
 				<KeyboardShortcuts
 					shortcuts={ {
-						'mod+a': this.selectAll,
-						'mod+z': this.undoOrRedo,
-						'mod+shift+z': this.undoOrRedo,
+						[ rawShortcut.primary( 'a' ) ]: this.selectAll,
+						[ rawShortcut.primary( 'z' ) ]: this.undoOrRedo,
+						[ rawShortcut.primaryShift( 'z' ) ]: this.undoOrRedo,
 						backspace: this.deleteSelectedBlocks,
 						del: this.deleteSelectedBlocks,
 						escape: this.clearMultiSelection,
@@ -80,7 +83,7 @@ class EditorGlobalKeyboardShortcuts extends Component {
 				<KeyboardShortcuts
 					bindGlobal
 					shortcuts={ {
-						'mod+s': this.save,
+						[ rawShortcut.primary( 's' ) ]: this.save,
 					} }
 				/>
 			</Fragment>
@@ -92,40 +95,54 @@ export default compose( [
 	withSelect( ( select ) => {
 		const {
 			getBlockOrder,
-			getMultiSelectedBlockUids,
+			getMultiSelectedBlockClientIds,
 			hasMultiSelection,
+			isEditedPostDirty,
+			getBlockRootClientId,
+			getTemplateLock,
 		} = select( 'core/editor' );
+		const multiSelectedBlockClientIds = getMultiSelectedBlockClientIds();
 
 		return {
-			uids: getBlockOrder(),
-			multiSelectedBlockUids: getMultiSelectedBlockUids(),
+			clientIds: getBlockOrder(),
+			multiSelectedBlockClientIds,
 			hasMultiSelection: hasMultiSelection(),
+			isLocked: some(
+				multiSelectedBlockClientIds,
+				( clientId ) => !! getTemplateLock( getBlockRootClientId( clientId ) )
+			),
+			isDirty: isEditedPostDirty(),
 		};
 	} ),
-	withDispatch( ( dispatch ) => {
+	withDispatch( ( dispatch, ownProps ) => {
 		const {
 			clearSelectedBlock,
 			multiSelect,
 			redo,
 			undo,
 			removeBlocks,
-			autosave,
+			savePost,
 		} = dispatch( 'core/editor' );
 
 		return {
+			onSave() {
+				// TODO: This should be handled in the `savePost` effect in
+				// considering `isSaveable`. See note on `isEditedPostSaveable`
+				// selector about dirtiness and meta-boxes. When removing, also
+				// remember to remove `isDirty` prop passing from `withSelect`.
+				//
+				// See: `isEditedPostSaveable`
+				if ( ! ownProps.isDirty ) {
+					return;
+				}
+
+				savePost();
+			},
 			clearSelectedBlock,
 			onMultiSelect: multiSelect,
 			onRedo: redo,
 			onUndo: undo,
 			onRemove: removeBlocks,
-			onSave: autosave,
-		};
-	} ),
-	withEditorSettings( ( settings ) => {
-		const { templateLock } = settings;
-
-		return {
-			isLocked: !! templateLock,
 		};
 	} ),
 ] )( EditorGlobalKeyboardShortcuts );

@@ -1,23 +1,25 @@
 /**
  * External dependencies
  */
-import { overEvery, find, findLast, reverse, get } from 'lodash';
+import { overEvery, find, findLast, reverse, first, last } from 'lodash';
 
 /**
  * WordPress dependencies
  */
-import { Component, compose } from '@wordpress/element';
+import { Component } from '@wordpress/element';
 import {
-	keycodes,
-	focus,
-	isTextField,
 	computeCaretRect,
+	focus,
 	isHorizontalEdge,
+	isTextField,
 	isVerticalEdge,
 	placeCaretAtHorizontalEdge,
 	placeCaretAtVerticalEdge,
-} from '@wordpress/utils';
+	isEntirelySelected,
+} from '@wordpress/dom';
+import { UP, DOWN, LEFT, RIGHT, isKeyboardEvent } from '@wordpress/keycodes';
 import { withSelect, withDispatch } from '@wordpress/data';
+import { compose } from '@wordpress/compose';
 
 /**
  * Internal dependencies
@@ -26,13 +28,14 @@ import './style.scss';
 import {
 	isBlockFocusStop,
 	isInSameBlock,
+	hasInnerBlocksContext,
 } from '../../utils/dom';
 
 /**
- * Module Constants
+ * Browser constants
  */
 
-const { UP, DOWN, LEFT, RIGHT } = keycodes;
+const { getSelection } = window;
 
 /**
  * Given an element, returns true if the element is a tabbable text field, or
@@ -104,9 +107,20 @@ class WritingFlow extends Component {
 				return false;
 			}
 
-			// Prefer text fields, but settle for block focus stop.
-			if ( ! isTextField( node ) && ! isBlockFocusStop( node ) ) {
+			// Prefer text fields...
+			if ( isTextField( node ) ) {
+				return true;
+			}
+
+			// ...but settle for block focus stop.
+			if ( ! isBlockFocusStop( node ) ) {
 				return false;
+			}
+
+			// If element contains inner blocks, stop immediately at its focus
+			// wrapper.
+			if ( hasInnerBlocksContext( node ) ) {
+				return true;
 			}
 
 			// If navigating out of a block (in reverse), don't consider its
@@ -137,21 +151,33 @@ class WritingFlow extends Component {
 		return find( focusableNodes, isTabCandidate );
 	}
 
-	expandSelection( currentStartUid, isReverse ) {
-		const { previousBlockUid, nextBlockUid } = this.props;
+	expandSelection( isReverse ) {
+		const {
+			selectedBlockClientId,
+			selectionStartClientId,
+			selectionBeforeEndClientId,
+			selectionAfterEndClientId,
+		} = this.props;
 
-		const expandedBlockUid = isReverse ? previousBlockUid : nextBlockUid;
-		if ( expandedBlockUid ) {
-			this.props.onMultiSelect( currentStartUid, expandedBlockUid );
+		const nextSelectionEndClientId = isReverse ?
+			selectionBeforeEndClientId :
+			selectionAfterEndClientId;
+
+		if ( nextSelectionEndClientId ) {
+			this.props.onMultiSelect(
+				selectionStartClientId || selectedBlockClientId,
+				nextSelectionEndClientId
+			);
 		}
 	}
 
 	moveSelection( isReverse ) {
-		const { previousBlockUid, nextBlockUid } = this.props;
+		const { selectedFirstClientId, selectedLastClientId } = this.props;
 
-		const focusedBlockUid = isReverse ? previousBlockUid : nextBlockUid;
-		if ( focusedBlockUid ) {
-			this.props.onSelectBlock( focusedBlockUid );
+		const focusedBlockClientId = isReverse ? selectedFirstClientId : selectedLastClientId;
+
+		if ( focusedBlockClientId ) {
+			this.props.onSelectBlock( focusedBlockClientId );
 		}
 	}
 
@@ -168,11 +194,11 @@ class WritingFlow extends Component {
 	 */
 	isTabbableEdge( target, isReverse ) {
 		const closestTabbable = this.getClosestTabbable( target, isReverse );
-		return ! isInSameBlock( target, closestTabbable );
+		return ! closestTabbable || ! isInSameBlock( target, closestTabbable );
 	}
 
 	onKeyDown( event ) {
-		const { selectedBlockUID, selectionStart, hasMultiSelection } = this.props;
+		const { hasMultiSelection, onMultiSelect, blocks } = this.props;
 
 		const { keyCode, target } = event;
 		const isUp = keyCode === UP;
@@ -184,8 +210,39 @@ class WritingFlow extends Component {
 		const isVertical = isUp || isDown;
 		const isNav = isHorizontal || isVertical;
 		const isShift = event.shiftKey;
-
 		const isNavEdge = isVertical ? isVerticalEdge : isHorizontalEdge;
+
+		// This logic inside this condition needs to be checked before
+		// the check for event.nativeEvent.defaultPrevented.
+		// The logic handles meta+a keypress and this event is default prevented by TinyMCE.
+		if ( ! isNav ) {
+			// Set immediately before the meta+a combination can be pressed.
+			if ( isKeyboardEvent.primary( event ) ) {
+				this.isEntirelySelected = isEntirelySelected( target );
+			}
+
+			if ( isKeyboardEvent.primary( event, 'a' ) ) {
+				// When the target is contentEditable, selection will already
+				// have been set by TinyMCE earlier in this call stack. We need
+				// check the previous result, otherwise all blocks will be
+				// selected right away.
+				if ( target.isContentEditable ? this.isEntirelySelected : isEntirelySelected( target ) ) {
+					onMultiSelect( first( blocks ), last( blocks ) );
+					event.preventDefault();
+				}
+
+				// Set in case the meta key doesn't get released.
+				this.isEntirelySelected = isEntirelySelected( target );
+			}
+
+			return;
+		}
+
+		// Abort if navigation has already been handled (e.g. TinyMCE inline
+		// boundaries).
+		if ( event.nativeEvent.defaultPrevented ) {
+			return;
+		}
 
 		if ( ! isVertical ) {
 			this.verticalRect = null;
@@ -193,25 +250,25 @@ class WritingFlow extends Component {
 			this.verticalRect = computeCaretRect( target );
 		}
 
-		if ( isNav && isShift && hasMultiSelection ) {
-			// Shift key is down and existing block multi-selection
+		if ( isShift && ( hasMultiSelection || (
+			this.isTabbableEdge( target, isReverse ) &&
+			isNavEdge( target, isReverse )
+		) ) ) {
+			// Shift key is down, and there is multi selection or we're at the end of the current block.
+			this.expandSelection( isReverse );
 			event.preventDefault();
-			this.expandSelection( selectionStart, isReverse );
-		} else if ( isNav && isShift && this.isTabbableEdge( target, isReverse ) && isNavEdge( target, isReverse, true ) ) {
-			// Shift key is down, but no existing block multi-selection
-			event.preventDefault();
-			this.expandSelection( selectedBlockUID, isReverse );
-		} else if ( isNav && hasMultiSelection ) {
+		} else if ( hasMultiSelection ) {
 			// Moving from block multi-selection to single block selection
-			event.preventDefault();
 			this.moveSelection( isReverse );
-		} else if ( isVertical && isVerticalEdge( target, isReverse, isShift ) ) {
+			event.preventDefault();
+		} else if ( isVertical && isVerticalEdge( target, isReverse ) ) {
 			const closestTabbable = this.getClosestTabbable( target, isReverse );
+
 			if ( closestTabbable ) {
 				placeCaretAtVerticalEdge( closestTabbable, isReverse, this.verticalRect );
 				event.preventDefault();
 			}
-		} else if ( isHorizontal && isHorizontalEdge( target, isReverse, isShift ) ) {
+		} else if ( isHorizontal && getSelection().isCollapsed && isHorizontalEdge( target, isReverse ) ) {
 			const closestTabbable = this.getClosestTabbable( target, isReverse );
 			placeCaretAtHorizontalEdge( closestTabbable, isReverse );
 			event.preventDefault();
@@ -259,21 +316,33 @@ class WritingFlow extends Component {
 export default compose( [
 	withSelect( ( select ) => {
 		const {
-			getPreviousBlockUid,
-			getNextBlockUid,
-			getMultiSelectedBlocksStartUid,
-			getMultiSelectedBlocks,
-			getSelectedBlock,
+			getSelectedBlockClientId,
+			getMultiSelectedBlocksStartClientId,
+			getMultiSelectedBlocksEndClientId,
+			getPreviousBlockClientId,
+			getNextBlockClientId,
+			getFirstMultiSelectedBlockClientId,
+			getLastMultiSelectedBlockClientId,
+			hasMultiSelection,
+			getBlockOrder,
 		} = select( 'core/editor' );
+
+		const selectedBlockClientId = getSelectedBlockClientId();
+		const selectionStartClientId = getMultiSelectedBlocksStartClientId();
+		const selectionEndClientId = getMultiSelectedBlocksEndClientId();
+
 		return {
-			previousBlockUid: getPreviousBlockUid(),
-			nextBlockUid: getNextBlockUid(),
-			selectionStart: getMultiSelectedBlocksStartUid(),
-			hasMultiSelection: getMultiSelectedBlocks().length > 1,
-			selectedBlockUID: get( getSelectedBlock(), [ 'uid' ] ),
+			selectedBlockClientId,
+			selectionStartClientId,
+			selectionBeforeEndClientId: getPreviousBlockClientId( selectionEndClientId || selectedBlockClientId ),
+			selectionAfterEndClientId: getNextBlockClientId( selectionEndClientId || selectedBlockClientId ),
+			selectedFirstClientId: getFirstMultiSelectedBlockClientId(),
+			selectedLastClientId: getLastMultiSelectedBlockClientId(),
+			hasMultiSelection: hasMultiSelection(),
+			blocks: getBlockOrder(),
 		};
 	} ),
-	withDispatch( ( dispatch ) =>{
+	withDispatch( ( dispatch ) => {
 		const { multiSelect, selectBlock } = dispatch( 'core/editor' );
 		return {
 			onMultiSelect: multiSelect,

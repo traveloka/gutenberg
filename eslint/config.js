@@ -27,13 +27,10 @@ module.exports = {
 		'react',
 		'jsx-a11y',
 	],
-	settings: {
-		react: {
-			pragma: 'wp',
-		},
-	},
 	rules: {
 		'array-bracket-spacing': [ 'error', 'always' ],
+		'arrow-parens': [ 'error', 'always' ],
+		'arrow-spacing': 'error',
 		'brace-style': [ 'error', '1tbs' ],
 		camelcase: [ 'error', { properties: 'never' } ],
 		'comma-dangle': [ 'error', 'always-multiline' ],
@@ -115,6 +112,7 @@ module.exports = {
 		'react/jsx-tag-spacing': 'error',
 		'react/no-children-prop': 'off',
 		'react/prop-types': 'off',
+		'react/react-in-jsx-scope': 'off',
 		semi: 'error',
 		'semi-spacing': 'error',
 		'space-before-blocks': [ 'error', 'always' ],

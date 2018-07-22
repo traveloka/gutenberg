@@ -27,7 +27,7 @@ export async function activatePlugin( slug ) {
 }
 
 /**
- * Dectivates an active plugin.
+ * Deactivates an active plugin.
  *
  * @param {string} slug Plugin slug.
  */
@@ -44,7 +44,7 @@ export async function deactivatePlugin( slug ) {
  */
 export async function uninstallPlugin( slug ) {
 	await visitAdmin( 'plugins.php' );
-	const confirmPromise = new Promise( resolve => {
+	const confirmPromise = new Promise( ( resolve ) => {
 		const confirmDialog = ( dialog ) => {
 			dialog.accept();
 			page.removeListener( 'dialog', confirmDialog );

@@ -1,17 +1,18 @@
 /**
  * External dependencies
  */
-import { first, partial } from 'lodash';
+import { first, partial, castArray } from 'lodash';
 import classnames from 'classnames';
 
 /**
  * WordPress dependencies
  */
 import { __ } from '@wordpress/i18n';
-import { IconButton, withInstanceId } from '@wordpress/components';
-import { getBlockType, withEditorSettings } from '@wordpress/blocks';
-import { compose, Component } from '@wordpress/element';
+import { IconButton } from '@wordpress/components';
+import { getBlockType } from '@wordpress/blocks';
+import { Component } from '@wordpress/element';
 import { withSelect, withDispatch } from '@wordpress/data';
+import { withInstanceId, compose } from '@wordpress/compose';
 
 /**
  * Internal dependencies
@@ -19,6 +20,7 @@ import { withSelect, withDispatch } from '@wordpress/data';
 import './style.scss';
 import { getBlockMoverDescription } from './mover-description';
 import { upArrow, downArrow } from './arrows';
+import withDeprecatedUniqueId from '../with-deprecated-unique-id';
 
 export class BlockMover extends Component {
 	constructor() {
@@ -43,8 +45,9 @@ export class BlockMover extends Component {
 	}
 
 	render() {
-		const { onMoveUp, onMoveDown, isFirst, isLast, uids, blockType, firstIndex, isLocked, instanceId, isHidden } = this.props;
+		const { onMoveUp, onMoveDown, isFirst, isLast, clientIds, blockType, firstIndex, isLocked, instanceId, isHidden } = this.props;
 		const { isFocused } = this.state;
+		const blocksCount = castArray( clientIds ).length;
 		if ( isLocked ) {
 			return null;
 		}
@@ -78,7 +81,7 @@ export class BlockMover extends Component {
 				<span id={ `editor-block-mover__up-description-${ instanceId }` } className="editor-block-mover__description">
 					{
 						getBlockMoverDescription(
-							uids.length,
+							blocksCount,
 							blockType && blockType.title,
 							firstIndex,
 							isFirst,
@@ -90,7 +93,7 @@ export class BlockMover extends Component {
 				<span id={ `editor-block-mover__down-description-${ instanceId }` } className="editor-block-mover__description">
 					{
 						getBlockMoverDescription(
-							uids.length,
+							blocksCount,
 							blockType && blockType.title,
 							firstIndex,
 							isFirst,
@@ -105,27 +108,23 @@ export class BlockMover extends Component {
 }
 
 export default compose(
-	withSelect( ( select, { uids, rootUID } ) => {
-		const { getBlock, getBlockIndex } = select( 'core/editor' );
-		const block = getBlock( first( uids ) );
+	withDeprecatedUniqueId,
+	withSelect( ( select, { clientIds, rootClientId } ) => {
+		const { getBlock, getBlockIndex, getTemplateLock } = select( 'core/editor' );
+		const firstClientId = first( castArray( clientIds ) );
+		const block = getBlock( firstClientId );
 
 		return {
-			firstIndex: getBlockIndex( first( uids ), rootUID ),
+			firstIndex: getBlockIndex( firstClientId, rootClientId ),
 			blockType: block ? getBlockType( block.name ) : null,
+			isLocked: getTemplateLock( rootClientId ) === 'all',
 		};
 	} ),
-	withDispatch( ( dispatch, { uids, rootUID } ) => {
+	withDispatch( ( dispatch, { clientIds, rootClientId } ) => {
 		const { moveBlocksDown, moveBlocksUp } = dispatch( 'core/editor' );
 		return {
-			onMoveDown: partial( moveBlocksDown, uids, rootUID ),
-			onMoveUp: partial( moveBlocksUp, uids, rootUID ),
-		};
-	} ),
-	withEditorSettings( ( settings ) => {
-		const { templateLock } = settings;
-
-		return {
-			isLocked: templateLock === 'all',
+			onMoveDown: partial( moveBlocksDown, clientIds, rootClientId ),
+			onMoveUp: partial( moveBlocksUp, clientIds, rootClientId ),
 		};
 	} ),
 	withInstanceId,

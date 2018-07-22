@@ -1,13 +1,12 @@
 /**
  * External dependencies
  */
-import { filter, get } from 'lodash';
+import { get } from 'lodash';
 
 /**
  * WordPress dependencies
  */
-import { withAPIData, withInstanceId } from '@wordpress/components';
-import { compose } from '@wordpress/element';
+import { withInstanceId, compose } from '@wordpress/compose';
 import { withSelect } from '@wordpress/data';
 
 /**
@@ -15,11 +14,8 @@ import { withSelect } from '@wordpress/data';
  */
 import PostTypeSupportCheck from '../post-type-support-check';
 
-export function PostAuthorCheck( { user, users, children } ) {
-	const authors = filter( users.data, ( { capabilities } ) => get( capabilities, [ 'level_1' ], false ) );
-	const userCanPublishPosts = get( user.data, [ 'post_type_capabilities', 'publish_posts' ], false );
-
-	if ( ! userCanPublishPosts || authors.length < 2 ) {
+export function PostAuthorCheck( { hasAssignAuthorAction, authors, children } ) {
+	if ( ! hasAssignAuthorAction || authors.length < 2 ) {
 		return null;
 	}
 
@@ -28,16 +24,11 @@ export function PostAuthorCheck( { user, users, children } ) {
 
 export default compose( [
 	withSelect( ( select ) => {
+		const post = select( 'core/editor' ).getCurrentPost();
 		return {
+			hasAssignAuthorAction: get( post, [ '_links', 'wp:action-assign-author' ], false ),
 			postType: select( 'core/editor' ).getCurrentPostType(),
-		};
-	} ),
-	withAPIData( ( props ) => {
-		const { postType } = props;
-
-		return {
-			users: '/wp/v2/users?context=edit&per_page=100',
-			user: `/wp/v2/users/me?post_type=${ postType }&context=edit`,
+			authors: select( 'core' ).getAuthors(),
 		};
 	} ),
 	withInstanceId,

@@ -7,9 +7,7 @@ import { isEmpty, map } from 'lodash';
  * WordPress dependencies
  */
 import { __ } from '@wordpress/i18n';
-import { withInstanceId } from '@wordpress/components';
-import { compose } from '@wordpress/element';
-import { withEditorSettings } from '@wordpress/blocks';
+import { withInstanceId, compose } from '@wordpress/compose';
 import { withSelect, withDispatch } from '@wordpress/data';
 
 /**
@@ -32,7 +30,7 @@ export function PageTemplate( { availableTemplates, selectedTemplate, instanceId
 				onBlur={ onEventUpdate }
 				onChange={ onEventUpdate }
 			>
-				{ map( { '': __( 'Default template' ), ...availableTemplates }, ( templateName, templateSlug ) => (
+				{ map( availableTemplates, ( templateName, templateSlug ) => (
 					<option key={ templateSlug } value={ templateSlug }>{ templateName }</option>
 				) ) }
 			</select>
@@ -42,17 +40,17 @@ export function PageTemplate( { availableTemplates, selectedTemplate, instanceId
 
 export default compose(
 	withSelect( ( select ) => {
+		const { getEditedPostAttribute, getEditorSettings } = select( 'core/editor' );
+		const { availableTemplates } = getEditorSettings();
 		return {
-			selectedTemplate: select( 'core/editor' ).getEditedPostAttribute( 'template' ),
+			selectedTemplate: getEditedPostAttribute( 'template' ),
+			availableTemplates,
 		};
 	} ),
 	withDispatch( ( dispatch ) => ( {
 		onUpdate( templateSlug ) {
 			dispatch( 'core/editor' ).editPost( { template: templateSlug || '' } );
 		},
-	} ) ),
-	withEditorSettings( ( settings ) => ( {
-		availableTemplates: settings.availableTemplates,
 	} ) ),
 	withInstanceId,
 )( PageTemplate );

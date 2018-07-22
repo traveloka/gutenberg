@@ -1,13 +1,13 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
 exports[`MultiBlocksSwitcher should return a BlockSwitcher element matching the snapshot. 1`] = `
-<WithSelect(WithDispatch(WithEditorSettings(BlockSwitcher)))
-  key="switcher"
-  uids={
+<WithSelect(WithDispatch(BlockSwitcher))
+  clientIds={
     Array [
-      "an-uid",
-      "another-uid",
+      "clientid-1",
+      "clientid-2",
     ]
   }
+  key="switcher"
 />
 `;

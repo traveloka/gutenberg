@@ -1,21 +1,19 @@
 /**
- * External dependencies
- */
-import { isEmpty } from 'lodash';
-
-/**
  * WordPress dependencies
  */
 import { __ } from '@wordpress/i18n';
 import { Dropdown, IconButton } from '@wordpress/components';
-import { createBlock, isUnmodifiedDefaultBlock, withEditorSettings } from '@wordpress/blocks';
-import { Component, compose } from '@wordpress/element';
+import { createBlock, isUnmodifiedDefaultBlock } from '@wordpress/blocks';
+import { Component } from '@wordpress/element';
 import { withSelect, withDispatch } from '@wordpress/data';
+import { compose } from '@wordpress/compose';
 
 /**
  * Internal dependencies
  */
 import InserterMenu from './menu';
+
+export { default as InserterResultsPortal } from './results-portal';
 
 class Inserter extends Component {
 	constructor() {
@@ -27,12 +25,6 @@ class Inserter extends Component {
 	onToggle( isOpen ) {
 		const { onToggle } = this.props;
 
-		if ( isOpen ) {
-			this.props.showInsertionPoint();
-		} else {
-			this.props.hideInsertionPoint();
-		}
-
 		// Surface toggle callback to parent component
 		if ( onToggle ) {
 			onToggle( isOpen );
@@ -41,21 +33,22 @@ class Inserter extends Component {
 
 	render() {
 		const {
+			items,
 			position,
 			title,
 			children,
 			onInsertBlock,
-			hasSupportedBlocks,
-			isLocked,
+			rootClientId,
 		} = this.props;
 
-		if ( ! hasSupportedBlocks || isLocked ) {
+		if ( items.length === 0 ) {
 			return null;
 		}
 
 		return (
 			<Dropdown
 				className="editor-inserter"
+				contentClassName="editor-inserter__popover"
 				position={ position }
 				onToggle={ this.onToggle }
 				expandOnMobile
@@ -79,7 +72,13 @@ class Inserter extends Component {
 						onClose();
 					};
 
-					return <InserterMenu onSelect={ onSelect } />;
+					return (
+						<InserterMenu
+							items={ items }
+							onSelect={ onSelect }
+							rootClientId={ rootClientId }
+						/>
+					);
 				} }
 			/>
 		);
@@ -87,31 +86,33 @@ class Inserter extends Component {
 }
 
 export default compose( [
-	withSelect( ( select ) => ( {
-		title: select( 'core/editor' ).getEditedPostAttribute( 'title' ),
-		insertionPoint: select( 'core/editor' ).getBlockInsertionPoint(),
-		selectedBlock: select( 'core/editor' ).getSelectedBlock(),
-	} ) ),
+	withSelect( ( select ) => {
+		const {
+			getEditedPostAttribute,
+			getBlockInsertionPoint,
+			getSelectedBlock,
+			getInserterItems,
+		} = select( 'core/editor' );
+		const insertionPoint = getBlockInsertionPoint();
+		const { rootClientId } = insertionPoint;
+		return {
+			title: getEditedPostAttribute( 'title' ),
+			insertionPoint,
+			selectedBlock: getSelectedBlock(),
+			items: getInserterItems( rootClientId ),
+			rootClientId,
+		};
+	} ),
 	withDispatch( ( dispatch, ownProps ) => ( {
-		showInsertionPoint: dispatch( 'core/editor' ).showInsertionPoint,
-		hideInsertionPoint: dispatch( 'core/editor' ).hideInsertionPoint,
 		onInsertBlock: ( item ) => {
 			const { insertionPoint, selectedBlock } = ownProps;
-			const { index, rootUID, layout } = insertionPoint;
+			const { index, rootClientId, layout } = insertionPoint;
 			const { name, initialAttributes } = item;
 			const insertedBlock = createBlock( name, { ...initialAttributes, layout } );
 			if ( selectedBlock && isUnmodifiedDefaultBlock( selectedBlock ) ) {
-				return dispatch( 'core/editor' ).replaceBlocks( selectedBlock.uid, insertedBlock );
+				return dispatch( 'core/editor' ).replaceBlocks( selectedBlock.clientId, insertedBlock );
 			}
-			return dispatch( 'core/editor' ).insertBlock( insertedBlock, index, rootUID );
+			return dispatch( 'core/editor' ).insertBlock( insertedBlock, index, rootClientId );
 		},
 	} ) ),
-	withEditorSettings( ( settings ) => {
-		const { allowedBlockTypes, templateLock } = settings;
-
-		return {
-			hasSupportedBlocks: true === allowedBlockTypes || ! isEmpty( allowedBlockTypes ),
-			isLocked: !! templateLock,
-		};
-	} ),
 ] )( Inserter );

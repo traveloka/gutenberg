@@ -6,14 +6,32 @@ import Textarea from 'react-autosize-textarea';
 /**
  * WordPress dependencies
  */
-import { Component, compose } from '@wordpress/element';
+import { __ } from '@wordpress/i18n';
+import { decodeEntities } from '@wordpress/html-entities';
+import { Component, Fragment } from '@wordpress/element';
 import { parse } from '@wordpress/blocks';
 import { withSelect, withDispatch } from '@wordpress/data';
+import { withInstanceId, compose } from '@wordpress/compose';
 
 /**
  * Internal dependencies
  */
 import './style.scss';
+
+/**
+ * Returns the PostTextEditor state given a set of props.
+ *
+ * @param {Object} props Component props.
+ *
+ * @return {Object} State object.
+ */
+function computeDerivedState( props ) {
+	return {
+		persistedValue: props.value,
+		value: props.value,
+		isDirty: false,
+	};
+}
 
 class PostTextEditor extends Component {
 	constructor() {
@@ -29,12 +47,14 @@ class PostTextEditor extends Component {
 		};
 	}
 
-	componentWillReceiveProps( nextProps ) {
+	static getDerivedPropsFromState( props, state ) {
 		// If we receive a new value while we're editing (but before we've made
 		// changes), go ahead and clobber the local state
-		if ( this.props.value !== nextProps.value && this.state.value && ! this.state.isDirty ) {
-			this.setState( { value: nextProps.value } );
+		if ( state.persistedValue !== props.value && ! state.isDirty ) {
+			return computeDerivedState( props );
 		}
+
+		return null;
 	}
 
 	startEditing() {
@@ -58,23 +78,38 @@ class PostTextEditor extends Component {
 	}
 
 	render() {
+		const { value, placeholder, instanceId } = this.props;
+		const decodedPlaceholder = decodeEntities( placeholder );
+
 		return (
-			<Textarea
-				autoComplete="off"
-				value={ this.state.value || this.props.value }
-				onFocus={ this.startEditing }
-				onChange={ this.edit }
-				onBlur={ this.stopEditing }
-				className="editor-post-text-editor"
-			/>
+			<Fragment>
+				<label htmlFor={ `post-content-${ instanceId }` } className="screen-reader-text">
+					{ decodedPlaceholder || __( 'Write your story' ) }
+				</label>
+				<Textarea
+					autoComplete="off"
+					value={ this.state.value || value }
+					onFocus={ this.startEditing }
+					onChange={ this.edit }
+					onBlur={ this.stopEditing }
+					className="editor-post-text-editor"
+					id={ `post-content-${ instanceId }` }
+					placeholder={ decodedPlaceholder || __( 'Write your story' ) }
+				/>
+			</Fragment>
 		);
 	}
 }
 
 export default compose( [
-	withSelect( ( select ) => ( {
-		value: select( 'core/editor' ).getEditedPostContent(),
-	} ) ),
+	withSelect( ( select ) => {
+		const { getEditedPostContent, getEditorSettings } = select( 'core/editor' );
+		const { bodyPlaceholder } = getEditorSettings();
+		return {
+			value: getEditedPostContent(),
+			placeholder: bodyPlaceholder,
+		};
+	} ),
 	withDispatch( ( dispatch ) => {
 		const { editPost, resetBlocks, checkTemplateValidity } = dispatch( 'core/editor' );
 		return {
@@ -87,4 +122,5 @@ export default compose( [
 			},
 		};
 	} ),
+	withInstanceId,
 ] )( PostTextEditor );

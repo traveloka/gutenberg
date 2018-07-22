@@ -4,7 +4,7 @@
 import { __ } from '@wordpress/i18n';
 import { Button, Dashicon } from '@wordpress/components';
 import { withSelect, withDispatch } from '@wordpress/data';
-import { compose } from '@wordpress/element';
+import { compose } from '@wordpress/compose';
 
 /**
  * Internal dependencies
@@ -19,7 +19,7 @@ function PostTrash( { isNew, postId, postType, ...props } ) {
 	const onClick = () => props.trashPost( postId, postType );
 
 	return (
-		<Button className="editor-post-trash button-link button-link-delete" onClick={ onClick }>
+		<Button isLink className="editor-post-trash button-link-delete" onClick={ onClick }>
 			{ __( 'Move to trash' ) }
 			<Dashicon icon="trash" />
 		</Button>

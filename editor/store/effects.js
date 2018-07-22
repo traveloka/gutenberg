@@ -2,7 +2,7 @@
  * External dependencies
  */
 import { BEGIN, COMMIT, REVERT } from 'redux-optimist';
-import { get, includes, last, map, castArray, uniqueId } from 'lodash';
+import { get, includes, last, map, castArray, uniqueId, pick } from 'lodash';
 
 /**
  * WordPress dependencies
@@ -20,22 +20,24 @@ import {
 } from '@wordpress/blocks';
 import { __ } from '@wordpress/i18n';
 import { speak } from '@wordpress/a11y';
+import apiFetch from '@wordpress/api-fetch';
 
 /**
  * Internal dependencies
  */
-import { getPostEditUrl, getWPAdminURL } from '../utils/url';
 import {
 	setupEditorState,
+	resetAutosave,
 	resetPost,
+	updatePost,
 	receiveBlocks,
 	receiveSharedBlocks,
 	replaceBlock,
 	replaceBlocks,
 	createSuccessNotice,
 	createErrorNotice,
+	createWarningNotice,
 	removeNotice,
-	savePost,
 	saveSharedBlock,
 	insertBlock,
 	removeBlocks,
@@ -49,28 +51,29 @@ import {
 	getCurrentPostType,
 	getEditedPostContent,
 	getPostEdits,
-	isCurrentPostPublished,
-	isEditedPostDirty,
-	isEditedPostNew,
+	isEditedPostAutosaveable,
 	isEditedPostSaveable,
 	getBlock,
 	getBlockCount,
-	getBlockRootUID,
+	getBlockRootClientId,
 	getBlocks,
 	getSharedBlock,
-	getPreviousBlockUid,
-	getProvisionalBlockUID,
+	getPreviousBlockClientId,
+	getProvisionalBlockClientId,
 	getSelectedBlock,
 	isBlockSelected,
 	getTemplate,
-	POST_UPDATE_TRANSACTION_ID,
 	getTemplateLock,
+	getAutosave,
+	isEditedPostNew,
+	POST_UPDATE_TRANSACTION_ID,
 } from './selectors';
 
 /**
  * Module Constants
  */
 const SAVE_POST_NOTICE_ID = 'SAVE_POST_NOTICE_ID';
+const AUTOSAVE_POST_NOTICE_ID = 'AUTOSAVE_POST_NOTICE_ID';
 const TRASH_POST_NOTICE_ID = 'TRASH_POST_NOTICE_ID';
 const SHARED_BLOCK_NOTICE_ID = 'SHARED_BLOCK_NOTICE_ID';
 
@@ -85,9 +88,9 @@ const SHARED_BLOCK_NOTICE_ID = 'SHARED_BLOCK_NOTICE_ID';
  */
 export function removeProvisionalBlock( action, store ) {
 	const state = store.getState();
-	const provisionalBlockUID = getProvisionalBlockUID( state );
-	if ( provisionalBlockUID && ! isBlockSelected( state, provisionalBlockUID ) ) {
-		return removeBlock( provisionalBlockUID, false );
+	const provisionalBlockClientId = getProvisionalBlockClientId( state );
+	if ( provisionalBlockClientId && ! isBlockSelected( state, provisionalBlockClientId ) ) {
+		return removeBlock( provisionalBlockClientId, false );
 	}
 }
 
@@ -96,48 +99,132 @@ export default {
 		const { dispatch, getState } = store;
 		const state = getState();
 		const post = getCurrentPost( state );
-		const edits = getPostEdits( state );
-		const toSend = {
+		const isAutosave = !! action.options.autosave;
+
+		// Prevent save if not saveable.
+		const isSaveable = isAutosave ? isEditedPostAutosaveable : isEditedPostSaveable;
+		if ( ! isSaveable( state ) ) {
+			return;
+		}
+
+		let edits = getPostEdits( state );
+		if ( isAutosave ) {
+			edits = pick( edits, [ 'title', 'content', 'excerpt' ] );
+		}
+
+		// New posts (with auto-draft status) must be explicitly assigned draft
+		// status if there is not already a status assigned in edits (publish).
+		// Otherwise, they are wrongly left as auto-draft. Status is not always
+		// respected for autosaves, so it cannot simply be included in the pick
+		// above. This behavior relies on an assumption that an auto-draft post
+		// would never be saved by anyone other than the owner of the post, per
+		// logic within autosaves REST controller to save status field only for
+		// draft/auto-draft by current user.
+		//
+		// See: https://core.trac.wordpress.org/ticket/43316#comment:88
+		// See: https://core.trac.wordpress.org/ticket/43316#comment:89
+		if ( isEditedPostNew( state ) ) {
+			edits = { status: 'draft', ...edits };
+		}
+
+		let toSend = {
 			...edits,
 			content: getEditedPostContent( state ),
 			id: post.id,
 		};
+		const basePath = wp.api.getPostTypeRoute( getCurrentPostType( state ) );
 
 		dispatch( {
-			type: 'UPDATE_POST',
-			edits: toSend,
+			type: 'REQUEST_POST_UPDATE_START',
 			optimist: { type: BEGIN, id: POST_UPDATE_TRANSACTION_ID },
+			isAutosave,
 		} );
-		dispatch( removeNotice( SAVE_POST_NOTICE_ID ) );
-		const basePath = wp.api.getPostTypeRoute( getCurrentPostType( state ) );
-		wp.apiRequest( { path: `/wp/v2/${ basePath }/${ post.id }`, method: 'PUT', data: toSend } ).then(
-			( newPost ) => {
-				dispatch( resetPost( newPost ) );
+
+		// Optimistically apply updates under the assumption that the post
+		// will be updated. See below logic in success resolution for revert
+		// if the autosave is applied as a revision.
+		dispatch( {
+			...updatePost( toSend ),
+			optimist: { id: POST_UPDATE_TRANSACTION_ID },
+		} );
+
+		let request;
+		if ( isAutosave ) {
+			// Ensure autosaves contain all expected fields, using autosave or
+			// post values as fallback if not otherwise included in edits.
+			toSend = {
+				...pick( post, [ 'title', 'content', 'excerpt' ] ),
+				...getAutosave( state ),
+				...toSend,
+				parent: post.id,
+			};
+
+			request = apiFetch( {
+				path: `/wp/v2/${ basePath }/${ post.id }/autosaves`,
+				method: 'POST',
+				data: toSend,
+			} );
+		} else {
+			dispatch( removeNotice( SAVE_POST_NOTICE_ID ) );
+			dispatch( removeNotice( AUTOSAVE_POST_NOTICE_ID ) );
+
+			request = apiFetch( {
+				path: `/wp/v2/${ basePath }/${ post.id }`,
+				method: 'PUT',
+				data: toSend,
+			} );
+		}
+
+		request
+			.then( ( newPost ) => {
+				const reset = isAutosave ? resetAutosave : resetPost;
+				dispatch( reset( newPost ) );
+
+				// An autosave may be processed by the server as a regular save
+				// when its update is requested by the author and the post was
+				// draft or auto-draft.
+				const isRevision = newPost.id !== post.id;
+
 				dispatch( {
 					type: 'REQUEST_POST_UPDATE_SUCCESS',
 					previousPost: post,
 					post: newPost,
-					edits: toSend,
-					optimist: { type: COMMIT, id: POST_UPDATE_TRANSACTION_ID },
+					optimist: {
+						// Note: REVERT is not a failure case here. Rather, it
+						// is simply reversing the assumption that the updates
+						// were applied to the post proper, such that the post
+						// treated as having unsaved changes.
+						type: isRevision ? REVERT : COMMIT,
+						id: POST_UPDATE_TRANSACTION_ID,
+					},
+					isAutosave,
 				} );
-			},
-			( err ) => {
-				dispatch( {
-					type: 'REQUEST_POST_UPDATE_FAILURE',
-					error: get( err, 'responseJSON', {
-						code: 'unknown_error',
-						message: __( 'An unknown error occurred.' ),
-					} ),
-					post,
-					edits,
-					optimist: { type: REVERT, id: POST_UPDATE_TRANSACTION_ID },
-				} );
-			}
-		);
+			} )
+			.catch( ( error ) => dispatch( {
+				type: 'REQUEST_POST_UPDATE_FAILURE',
+				optimist: { type: REVERT, id: POST_UPDATE_TRANSACTION_ID },
+				post,
+				edits,
+				error,
+			} ) );
 	},
 	REQUEST_POST_UPDATE_SUCCESS( action, store ) {
-		const { previousPost, post } = action;
-		const { dispatch } = store;
+		const { previousPost, post, isAutosave } = action;
+		const { dispatch, getState } = store;
+
+		// TEMPORARY: If edits remain after a save completes, the user must be
+		// prompted about unsaved changes. This should be refactored as part of
+		// the `isEditedPostDirty` selector instead.
+		//
+		// See: https://github.com/WordPress/gutenberg/issues/7409
+		if ( Object.keys( getPostEdits( getState() ) ).length ) {
+			dispatch( { type: 'DIRTY_ARTIFICIALLY' } );
+		}
+
+		// Autosaves are neither shown a notice nor redirected.
+		if ( isAutosave ) {
+			return;
+		}
 
 		const publishStatus = [ 'publish', 'private', 'future' ];
 		const isPublished = includes( publishStatus, previousPost.status );
@@ -145,8 +232,9 @@ export default {
 
 		let noticeMessage;
 		let shouldShowLink = true;
+
 		if ( ! isPublished && ! willPublish ) {
-			// If saving a non published post, don't show any notice
+			// If saving a non-published post, don't show notice.
 			noticeMessage = null;
 		} else if ( isPublished && ! willPublish ) {
 			// If undoing publish status, show specific notice
@@ -168,24 +256,23 @@ export default {
 		if ( noticeMessage ) {
 			dispatch( createSuccessNotice(
 				<p>
-					<span>{ noticeMessage }</span>
+					{ noticeMessage }
 					{ ' ' }
 					{ shouldShowLink && <a href={ post.link }>{ __( 'View post' ) }</a> }
 				</p>,
 				{ id: SAVE_POST_NOTICE_ID, spokenMessage: noticeMessage }
 			) );
 		}
-
-		if ( get( window.history.state, 'id' ) !== post.id ) {
-			window.history.replaceState(
-				{ id: post.id },
-				'Post ' + post.id,
-				getPostEditUrl( post.id )
-			);
-		}
 	},
 	REQUEST_POST_UPDATE_FAILURE( action, store ) {
-		const { post, edits } = action;
+		const { post, edits, error } = action;
+
+		if ( error && 'rest_autosave_no_changes' === error.code ) {
+			// Autosave requested a new autosave, but there were no changes. This shouldn't
+			// result in an error notice for the user.
+			return;
+		}
+
 		const { dispatch } = store;
 
 		const publishStatus = [ 'publish', 'private', 'future' ];
@@ -207,33 +294,19 @@ export default {
 		const { postId } = action;
 		const basePath = wp.api.getPostTypeRoute( getCurrentPostType( getState() ) );
 		dispatch( removeNotice( TRASH_POST_NOTICE_ID ) );
-		wp.apiRequest( { path: `/wp/v2/${ basePath }/${ postId }`, method: 'DELETE' } ).then(
-			() => {
-				dispatch( {
-					...action,
-					type: 'TRASH_POST_SUCCESS',
-				} );
-			},
-			( err ) => {
-				dispatch( {
-					...action,
-					type: 'TRASH_POST_FAILURE',
-					error: get( err, 'responseJSON', {
-						code: 'unknown_error',
-						message: __( 'An unknown error occurred.' ),
-					} ),
-				} );
-			}
-		);
-	},
-	TRASH_POST_SUCCESS( action ) {
-		const { postId, postType } = action;
+		apiFetch( { path: `/wp/v2/${ basePath }/${ postId }`, method: 'DELETE' } )
+			.then( () => {
+				const post = getCurrentPost( getState() );
 
-		window.location.href = getWPAdminURL( 'edit.php', {
-			trashed: 1,
-			post_type: postType,
-			ids: postId,
-		} );
+				// TODO: This should be an updatePost action (updating subsets of post properties),
+				// But right now editPost is tied with change detection.
+				dispatch( resetPost( { ...post, status: 'trash' } ) );
+			} )
+			.catch( ( error ) => dispatch( {
+				...action,
+				type: 'TRASH_POST_FAILURE',
+				error,
+			} ) );
 	},
 	TRASH_POST_FAILURE( action, store ) {
 		const message = action.error.message && action.error.code !== 'unknown_error' ? action.error.message : __( 'Trashing failed' );
@@ -250,7 +323,7 @@ export default {
 			context: 'edit',
 		};
 
-		wp.apiRequest( { path: `/wp/v2/${ basePath }/${ post.id }`, data } ).then(
+		apiFetch( { path: `/wp/v2/${ basePath }/${ post.id }`, data } ).then(
 			( newPost ) => {
 				dispatch( resetPost( newPost ) );
 			}
@@ -259,14 +332,14 @@ export default {
 	MERGE_BLOCKS( action, store ) {
 		const { dispatch } = store;
 		const state = store.getState();
-		const [ blockAUid, blockBUid ] = action.blocks;
-		const blockA = getBlock( state, blockAUid );
-		const blockB = getBlock( state, blockBUid );
+		const [ firstBlockClientId, secondBlockClientId ] = action.blocks;
+		const blockA = getBlock( state, firstBlockClientId );
+		const blockB = getBlock( state, secondBlockClientId );
 		const blockType = getBlockType( blockA.name );
 
 		// Only focus the previous block if it's not mergeable
 		if ( ! blockType.merge ) {
-			dispatch( selectBlock( blockA.uid ) );
+			dispatch( selectBlock( blockA.clientId ) );
 			return;
 		}
 
@@ -287,9 +360,9 @@ export default {
 			blocksWithTheSameType[ 0 ].attributes
 		);
 
-		dispatch( selectBlock( blockA.uid, -1 ) );
+		dispatch( selectBlock( blockA.clientId, -1 ) );
 		dispatch( replaceBlocks(
-			[ blockA.uid, blockB.uid ],
+			[ blockA.clientId, blockB.clientId ],
 			[
 				{
 					...blockA,
@@ -302,30 +375,11 @@ export default {
 			]
 		) );
 	},
-	AUTOSAVE( action, store ) {
-		const { getState, dispatch } = store;
+	SETUP_EDITOR( action, { getState } ) {
+		const { post, autosave } = action;
 		const state = getState();
-		if ( ! isEditedPostSaveable( state ) ) {
-			return;
-		}
-
-		if ( ! isEditedPostNew( state ) && ! isEditedPostDirty( state ) ) {
-			return;
-		}
-
-		if ( isCurrentPostPublished( state ) ) {
-			// TODO: Publish autosave.
-			//  - Autosaves are created as revisions for published posts, but
-			//    the necessary REST API behavior does not yet exist
-			//  - May need to check for whether the status of the edited post
-			//    has changed from the saved copy (i.e. published -> pending)
-			return;
-		}
-
-		dispatch( savePost() );
-	},
-	SETUP_EDITOR( action ) {
-		const { post, settings } = action;
+		const template = getTemplate( state );
+		const templateLock = getTemplateLock( state );
 
 		// Parse content as blocks
 		let blocks;
@@ -335,12 +389,12 @@ export default {
 
 			// Unlocked templates are considered always valid because they act as default values only.
 			isValidTemplate = (
-				! settings.template ||
-				settings.templateLock !== 'all' ||
-				doBlocksMatchTemplate( blocks, settings.template )
+				! template ||
+				templateLock !== 'all' ||
+				doBlocksMatchTemplate( blocks, template )
 			);
-		} else if ( settings.template ) {
-			blocks = synchronizeBlocksWithTemplate( [], settings.template );
+		} else if ( template ) {
+			blocks = synchronizeBlocksWithTemplate( [], template );
 		} else if ( getDefaultBlockForPostFormat( post.format ) ) {
 			blocks = [ createBlock( getDefaultBlockForPostFormat( post.format ) ) ];
 		} else {
@@ -351,12 +405,29 @@ export default {
 		const edits = {};
 		if ( post.status === 'auto-draft' ) {
 			edits.title = post.title.raw;
-			edits.status = 'draft';
+		}
+
+		// Check the auto-save status
+		let autosaveAction;
+		if ( autosave ) {
+			const noticeMessage = __( 'There is an autosave of this post that is more recent than the version below.' );
+			autosaveAction = createWarningNotice(
+				<p>
+					{ noticeMessage }
+					{ ' ' }
+					<a href={ autosave.editLink }>{ __( 'View the autosave' ) }</a>
+				</p>,
+				{
+					id: AUTOSAVE_POST_NOTICE_ID,
+					spokenMessage: noticeMessage,
+				}
+			);
 		}
 
 		return [
 			setTemplateValidity( isValidTemplate ),
 			setupEditorState( post, blocks, edits ),
+			...( autosaveAction ? [ autosaveAction ] : [] ),
 		];
 	},
 	SYNCHRONIZE_TEMPLATE( action, { getState } ) {
@@ -396,13 +467,13 @@ export default {
 
 		let result;
 		if ( id ) {
-			result = wp.apiRequest( { path: `/wp/v2/${ basePath }/${ id }` } );
+			result = apiFetch( { path: `/wp/v2/${ basePath }/${ id }` } );
 		} else {
-			result = wp.apiRequest( { path: `/wp/v2/${ basePath }` } );
+			result = apiFetch( { path: `/wp/v2/${ basePath }?per_page=-1` } );
 		}
 
-		result.then(
-			( sharedBlockOrBlocks ) => {
+		result
+			.then( ( sharedBlockOrBlocks ) => {
 				dispatch( receiveSharedBlocks( map(
 					castArray( sharedBlockOrBlocks ),
 					( sharedBlock ) => ( {
@@ -415,18 +486,12 @@ export default {
 					type: 'FETCH_SHARED_BLOCKS_SUCCESS',
 					id,
 				} );
-			},
-			( error ) => {
-				dispatch( {
-					type: 'FETCH_SHARED_BLOCKS_FAILURE',
-					id,
-					error: error.responseJSON || {
-						code: 'unknown_error',
-						message: __( 'An unknown error occurred.' ),
-					},
-				} );
-			}
-		);
+			} )
+			.catch( ( error ) => dispatch( {
+				type: 'FETCH_SHARED_BLOCKS_FAILURE',
+				id,
+				error,
+			} ) );
 	},
 	RECEIVE_SHARED_BLOCKS( action ) {
 		return receiveBlocks( map( action.results, 'parsedBlock' ) );
@@ -443,16 +508,16 @@ export default {
 		const { dispatch } = store;
 		const state = store.getState();
 
-		const { uid, title, isTemporary } = getSharedBlock( state, id );
-		const { name, attributes, innerBlocks } = getBlock( state, uid );
+		const { clientId, title, isTemporary } = getSharedBlock( state, id );
+		const { name, attributes, innerBlocks } = getBlock( state, clientId );
 		const content = serialize( createBlock( name, attributes, innerBlocks ) );
 
 		const data = isTemporary ? { title, content } : { id, title, content };
 		const path = isTemporary ? `/wp/v2/${ basePath }` : `/wp/v2/${ basePath }/${ id }`;
 		const method = isTemporary ? 'POST' : 'PUT';
 
-		wp.apiRequest( { path, data, method } ).then(
-			( updatedSharedBlock ) => {
+		apiFetch( { path, data, method } )
+			.then( ( updatedSharedBlock ) => {
 				dispatch( {
 					type: 'SAVE_SHARED_BLOCK_SUCCESS',
 					updatedId: updatedSharedBlock.id,
@@ -460,16 +525,14 @@ export default {
 				} );
 				const message = isTemporary ? __( 'Block created.' ) : __( 'Block updated.' );
 				dispatch( createSuccessNotice( message, { id: SHARED_BLOCK_NOTICE_ID } ) );
-			},
-			( error ) => {
+			} )
+			.catch( ( error ) => {
 				dispatch( { type: 'SAVE_SHARED_BLOCK_FAILURE', id } );
-				const message = __( 'An unknown error occurred.' );
-				dispatch( createErrorNotice( get( error.responseJSON, 'message', message ), {
+				dispatch( createErrorNotice( error.message, {
 					id: SHARED_BLOCK_NOTICE_ID,
-					spokenMessage: message,
+					spokenMessage: error.message,
 				} ) );
-			}
-		);
+			} );
 	},
 	DELETE_SHARED_BLOCK( action, store ) {
 		// TODO: these are potentially undefined, this fix is in place
@@ -490,8 +553,8 @@ export default {
 
 		// Remove any other blocks that reference this shared block
 		const allBlocks = getBlocks( getState() );
-		const associatedBlocks = allBlocks.filter( block => isSharedBlock( block ) && block.attributes.ref === id );
-		const associatedBlockUids = associatedBlocks.map( block => block.uid );
+		const associatedBlocks = allBlocks.filter( ( block ) => isSharedBlock( block ) && block.attributes.ref === id );
+		const associatedBlockClientIds = associatedBlocks.map( ( block ) => block.clientId );
 
 		const transactionId = uniqueId();
 
@@ -503,12 +566,12 @@ export default {
 
 		// Remove the parsed block.
 		dispatch( removeBlocks( [
-			...associatedBlockUids,
-			sharedBlock.uid,
+			...associatedBlockClientIds,
+			sharedBlock.clientId,
 		] ) );
 
-		wp.apiRequest( { path: `/wp/v2/${ basePath }/${ id }`, method: 'DELETE' } ).then(
-			() => {
+		apiFetch( { path: `/wp/v2/${ basePath }/${ id }`, method: 'DELETE' } )
+			.then( () => {
 				dispatch( {
 					type: 'DELETE_SHARED_BLOCK_SUCCESS',
 					id,
@@ -516,37 +579,35 @@ export default {
 				} );
 				const message = __( 'Block deleted.' );
 				dispatch( createSuccessNotice( message, { id: SHARED_BLOCK_NOTICE_ID } ) );
-			},
-			( error ) => {
+			} )
+			.catch( ( error ) => {
 				dispatch( {
 					type: 'DELETE_SHARED_BLOCK_FAILURE',
 					id,
 					optimist: { type: REVERT, id: transactionId },
 				} );
-				const message = __( 'An unknown error occurred.' );
-				dispatch( createErrorNotice( get( error.responseJSON, 'message', message ), {
+				dispatch( createErrorNotice( error.message, {
 					id: SHARED_BLOCK_NOTICE_ID,
-					spokenMessage: message,
+					spokenMessage: error.message,
 				} ) );
-			}
-		);
+			} );
 	},
 	CONVERT_BLOCK_TO_STATIC( action, store ) {
 		const state = store.getState();
-		const oldBlock = getBlock( state, action.uid );
+		const oldBlock = getBlock( state, action.clientId );
 		const sharedBlock = getSharedBlock( state, oldBlock.attributes.ref );
-		const referencedBlock = getBlock( state, sharedBlock.uid );
+		const referencedBlock = getBlock( state, sharedBlock.clientId );
 		const newBlock = createBlock( referencedBlock.name, referencedBlock.attributes );
-		store.dispatch( replaceBlock( oldBlock.uid, newBlock ) );
+		store.dispatch( replaceBlock( oldBlock.clientId, newBlock ) );
 	},
 	CONVERT_BLOCK_TO_SHARED( action, store ) {
 		const { getState, dispatch } = store;
 
-		const parsedBlock = getBlock( getState(), action.uid );
+		const parsedBlock = getBlock( getState(), action.clientId );
 		const sharedBlock = {
 			id: uniqueId( 'shared' ),
-			uid: parsedBlock.uid,
-			title: __( 'Untitled block' ),
+			clientId: parsedBlock.clientId,
+			title: __( 'Untitled shared block' ),
 		};
 
 		dispatch( receiveSharedBlocks( [ {
@@ -557,7 +618,7 @@ export default {
 		dispatch( saveSharedBlock( sharedBlock.id ) );
 
 		dispatch( replaceBlock(
-			parsedBlock.uid,
+			parsedBlock.clientId,
 			createBlock( 'core/block', {
 				ref: sharedBlock.id,
 				layout: parsedBlock.attributes.layout,
@@ -573,7 +634,7 @@ export default {
 	},
 
 	EDIT_POST( action, { getState } ) {
-		const format = get( action, 'edits.format' );
+		const format = get( action, [ 'edits', 'format' ] );
 		if ( ! format ) {
 			return;
 		}
@@ -595,24 +656,24 @@ export default {
 			return;
 		}
 
-		const firstRemovedBlockUID = action.uids[ 0 ];
+		const firstRemovedBlockClientId = action.clientIds[ 0 ];
 		const state = getState();
 		const currentSelectedBlock = getSelectedBlock( state );
 
 		// recreate the state before the block was removed.
 		const previousState = { ...state, editor: { present: last( state.editor.past ) } };
 
-		// rootUID of the removed block.
-		const rootUID = getBlockRootUID( previousState, firstRemovedBlockUID );
+		// rootClientId of the removed block.
+		const rootClientId = getBlockRootClientId( previousState, firstRemovedBlockClientId );
 
-		// UID of the block that was before the removed block
-		// or the rootUID if the removed block was the first amongst his siblings.
-		const blockUIDToSelect = getPreviousBlockUid( previousState, firstRemovedBlockUID ) || rootUID;
+		// Client ID of the block that was before the removed block or the
+		// rootClientId if the removed block was first amongst its siblings.
+		const blockClientIdToSelect = getPreviousBlockClientId( previousState, firstRemovedBlockClientId ) || rootClientId;
 
 		// Dispatch select block action if the currently selected block
 		// is not already the block we want to be selected.
-		if ( blockUIDToSelect !== currentSelectedBlock ) {
-			dispatch( selectBlock( blockUIDToSelect ) );
+		if ( blockClientIdToSelect !== currentSelectedBlock ) {
+			dispatch( selectBlock( blockClientIdToSelect ) );
 		}
 	},
 };

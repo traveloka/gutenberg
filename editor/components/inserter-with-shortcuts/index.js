@@ -6,8 +6,8 @@ import { filter, isEmpty } from 'lodash';
 /**
  * WordPress dependencies
  */
-import { BlockIcon, createBlock, getDefaultBlockName, withEditorSettings } from '@wordpress/blocks';
-import { compose } from '@wordpress/element';
+import { createBlock, getDefaultBlockName } from '@wordpress/blocks';
+import { compose } from '@wordpress/compose';
 import { IconButton } from '@wordpress/components';
 import { __, sprintf } from '@wordpress/i18n';
 import { withDispatch, withSelect } from '@wordpress/data';
@@ -15,6 +15,7 @@ import { withDispatch, withSelect } from '@wordpress/data';
 /**
  * Internal dependencies
  */
+import BlockIcon from '../block-icon';
 import './style.scss';
 
 function InserterWithShortcuts( { items, isLocked, onInsert } ) {
@@ -22,9 +23,12 @@ function InserterWithShortcuts( { items, isLocked, onInsert } ) {
 		return null;
 	}
 
-	const itemsWithoutDefaultBlock = filter( items, ( item ) =>
-		item.name !== getDefaultBlockName() || ! isEmpty( item.initialAttributes )
-	).slice( 0, 3 );
+	const itemsWithoutDefaultBlock = filter( items, ( item ) => {
+		return ! item.isDisabled && (
+			item.name !== getDefaultBlockName() ||
+			! isEmpty( item.initialAttributes )
+		);
+	} ).slice( 0, 3 );
 
 	return (
 		<div className="editor-inserter-with-shortcuts">
@@ -33,9 +37,10 @@ function InserterWithShortcuts( { items, isLocked, onInsert } ) {
 					key={ item.id }
 					className="editor-inserter-with-shortcuts__block"
 					onClick={ () => onInsert( item ) }
+					// translators: %s: block title/name to be added
 					label={ sprintf( __( 'Add %s' ), item.title ) }
 					icon={ (
-						<BlockIcon icon={ item.icon } />
+						<BlockIcon icon={ item.icon && item.icon.src } />
 					) }
 				/>
 			) ) }
@@ -44,27 +49,23 @@ function InserterWithShortcuts( { items, isLocked, onInsert } ) {
 }
 
 export default compose(
-	withEditorSettings( ( settings ) => {
-		const { templateLock, allowedBlockTypes } = settings;
-
+	withSelect( ( select, { rootClientId } ) => {
+		const { getInserterItems, getTemplateLock } = select( 'core/editor' );
 		return {
-			isLocked: !! templateLock,
-			allowedBlockTypes,
+			items: getInserterItems( rootClientId ),
+			isLocked: !! getTemplateLock( rootClientId ),
 		};
 	} ),
-	withSelect( ( select, { allowedBlockTypes } ) => ( {
-		items: select( 'core/editor' ).getFrecentInserterItems( allowedBlockTypes, 4 ),
-	} ) ),
 	withDispatch( ( dispatch, ownProps ) => {
-		const { uid, rootUID, layout } = ownProps;
+		const { clientId, rootClientId, layout } = ownProps;
 
 		return {
 			onInsert( { name, initialAttributes } ) {
 				const block = createBlock( name, { ...initialAttributes, layout } );
-				if ( uid ) {
-					dispatch( 'core/editor' ).replaceBlocks( uid, block );
+				if ( clientId ) {
+					dispatch( 'core/editor' ).replaceBlocks( clientId, block );
 				} else {
-					dispatch( 'core/editor' ).insertBlock( block, undefined, rootUID );
+					dispatch( 'core/editor' ).insertBlock( block, undefined, rootClientId );
 				}
 			},
 		};
