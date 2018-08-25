@@ -1,6 +1,6 @@
-# @wordpress/api-fetch
+# API Fetch
 
-Wrapper around `window.fetch` to call WordPress REST APIs.
+Utility to make WordPress REST API requests. It's a wrapper around `window.fetch`.
 
 ## Installation
 
@@ -58,7 +58,7 @@ apiFetch.use( apiFetch.createNonceMiddleware( nonce ) );
 import apiFetch from '@wordpress/api-fetch';
 
 const rootURL = "http://my-wordpress-site/wp-json/";
-apiFetch.use( apiFetch.createRootURLMiddleware( nonce ) );
+apiFetch.use( apiFetch.createRootURLMiddleware( rootURL ) );
 ```
 
 <br/><br/><p align="center"><img src="https://s.w.org/style/images/codeispoetry.png?1" alt="Code is Poetry." /></p>

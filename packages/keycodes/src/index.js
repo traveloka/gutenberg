@@ -12,7 +12,12 @@
 /**
  * External dependencies
  */
-import { get, mapValues, includes } from 'lodash';
+import { get, mapValues, includes, capitalize } from 'lodash';
+
+/**
+ * Internal dependencies
+ */
+import { isAppleOS } from './platform';
 
 export const BACKSPACE = 8;
 export const TAB = 9;
@@ -33,22 +38,16 @@ export const CTRL = 'ctrl';
 export const COMMAND = 'meta';
 export const SHIFT = 'shift';
 
-/**
- * Return true if platform is MacOS.
- *
- * @param {Object} _window   window object by default; used for DI testing.
- *
- * @return {boolean}         True if MacOS; false otherwise.
- */
-export function isMacOS( _window = window ) {
-	return _window.navigator.platform.indexOf( 'Mac' ) !== -1;
-}
-
 const modifiers = {
-	primary: ( _isMac ) => _isMac() ? [ COMMAND ] : [ CTRL ],
-	primaryShift: ( _isMac ) => _isMac() ? [ SHIFT, COMMAND ] : [ CTRL, SHIFT ],
-	secondary: ( _isMac ) => _isMac() ? [ SHIFT, ALT, COMMAND ] : [ CTRL, SHIFT, ALT ],
-	access: ( _isMac ) => _isMac() ? [ CTRL, ALT ] : [ SHIFT, ALT ],
+	primary: ( _isApple ) => _isApple() ? [ COMMAND ] : [ CTRL ],
+	primaryShift: ( _isApple ) => _isApple() ? [ SHIFT, COMMAND ] : [ CTRL, SHIFT ],
+	primaryAlt: ( _isApple ) => _isApple() ? [ ALT, COMMAND ] : [ CTRL, ALT ],
+	secondary: ( _isApple ) => _isApple() ? [ SHIFT, ALT, COMMAND ] : [ CTRL, SHIFT, ALT ],
+	access: ( _isApple ) => _isApple() ? [ CTRL, ALT ] : [ SHIFT, ALT ],
+	ctrl: () => [ CTRL ],
+	ctrlShift: () => [ CTRL, SHIFT ],
+	shift: () => [ SHIFT ],
+	shiftAlt: () => [ SHIFT, ALT ],
 };
 
 /**
@@ -59,8 +58,39 @@ const modifiers = {
  * @type {Object} Keyed map of functions to raw shortcuts.
  */
 export const rawShortcut = mapValues( modifiers, ( modifier ) => {
-	return ( character, _isMac = isMacOS ) => {
-		return [ ...modifier( _isMac ), character.toLowerCase() ].join( '+' );
+	return ( character, _isApple = isAppleOS ) => {
+		return [ ...modifier( _isApple ), character.toLowerCase() ].join( '+' );
+	};
+} );
+
+/**
+ * Return an array of the parts of a keyboard shortcut chord for display
+ * E.g displayShortcutList.primary( 'm' ) will return [ '⌘', 'M' ] on Mac.
+ *
+ * @type {Object} keyed map of functions to shortcut sequences
+ */
+export const displayShortcutList = mapValues( modifiers, ( modifier ) => {
+	return ( character, _isApple = isAppleOS ) => {
+		const isMac = _isApple();
+		const replacementKeyMap = {
+			[ ALT ]: isMac ? 'Option' : 'Alt',
+			[ CTRL ]: 'Ctrl',
+			[ COMMAND ]: '⌘',
+			[ SHIFT ]: 'Shift',
+		};
+
+		const modifierKeys = modifier( _isApple ).reduce( ( accumulator, key ) => {
+			const replacementKey = get( replacementKeyMap, key, key );
+			// When the mac's clover symbol is used, do not display a + afterwards
+			if ( replacementKey === '⌘' ) {
+				return [ ...accumulator, replacementKey ];
+			}
+
+			return [ ...accumulator, replacementKey, '+' ];
+		}, [] );
+
+		const capitalizedCharacter = capitalize( character );
+		return [ ...modifierKeys, capitalizedCharacter ];
 	};
 } );
 
@@ -70,25 +100,8 @@ export const rawShortcut = mapValues( modifiers, ( modifier ) => {
  *
  * @type {Object} Keyed map of functions to display shortcuts.
  */
-export const displayShortcut = mapValues( modifiers, ( modifier ) => {
-	return ( character, _isMac = isMacOS ) => {
-		const isMac = _isMac();
-		const replacementKeyMap = {
-			[ ALT ]: isMac ? 'Option' : 'Alt',
-			[ CTRL ]: 'Ctrl',
-			[ COMMAND ]: '⌘',
-			[ SHIFT ]: 'Shift',
-		};
-		const shortcut = [
-			...modifier( _isMac ).map( ( key ) => get( replacementKeyMap, key, key ) ),
-			character.toUpperCase(),
-		].join( '+' );
-
-		// Because we use just the clover symbol for MacOS's "command" key, remove
-		// the key join character ("+") between it and the final character if that
-		// final character is alphanumeric. ⌘S looks nicer than ⌘+S.
-		return shortcut.replace( /⌘\+([A-Z0-9])$/g, '⌘$1' );
-	};
+export const displayShortcut = mapValues( displayShortcutList, ( sequence ) => {
+	return ( character, _isApple = isAppleOS ) => sequence( character, _isApple ).join( '' );
 } );
 
 /**
@@ -100,8 +113,8 @@ export const displayShortcut = mapValues( modifiers, ( modifier ) => {
  * @type {Object} Keyed map of functions to match events.
  */
 export const isKeyboardEvent = mapValues( modifiers, ( getModifiers ) => {
-	return ( event, character, _isMac = isMacOS ) => {
-		const mods = getModifiers( _isMac );
+	return ( event, character, _isApple = isAppleOS ) => {
+		const mods = getModifiers( _isApple );
 
 		if ( ! mods.every( ( key ) => event[ `${ key }Key` ] ) ) {
 			return false;

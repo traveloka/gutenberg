@@ -4,6 +4,8 @@
 const ExtractTextPlugin = require( 'extract-text-webpack-plugin' );
 const WebpackRTLPlugin = require( 'webpack-rtl-plugin' );
 const LiveReloadPlugin = require( 'webpack-livereload-plugin' );
+const CopyWebpackPlugin = require( 'copy-webpack-plugin' );
+const postcss = require( 'postcss' );
 
 const { get } = require( 'lodash' );
 const { basename } = require( 'path' );
@@ -21,17 +23,17 @@ const mainCSSExtractTextPlugin = new ExtractTextPlugin( {
 
 // CSS loader for styles specific to block editing.
 const editBlocksCSSPlugin = new ExtractTextPlugin( {
-	filename: './build/core-blocks/edit-blocks.css',
+	filename: './build/block-library/edit-blocks.css',
 } );
 
 // CSS loader for styles specific to blocks in general.
 const blocksCSSPlugin = new ExtractTextPlugin( {
-	filename: './build/core-blocks/style.css',
+	filename: './build/block-library/style.css',
 } );
 
 // CSS loader for default visual block styles.
 const themeBlocksCSSPlugin = new ExtractTextPlugin( {
-	filename: './build/core-blocks/theme.css',
+	filename: './build/block-library/theme.css',
 } );
 
 // Configuration for the ExtractTextPlugin.
@@ -75,11 +77,9 @@ function camelCaseDash( string ) {
 
 const entryPointNames = [
 	'components',
-	'editor',
-	'utils',
 	'edit-post',
+	'block-library',
 	'core-blocks',
-	'nux',
 ];
 
 const gutenbergPackages = [
@@ -96,15 +96,21 @@ const gutenbergPackages = [
 	'deprecated',
 	'dom',
 	'dom-ready',
+	'editor',
 	'element',
 	'hooks',
 	'html-entities',
 	'i18n',
 	'is-shallow-equal',
 	'keycodes',
+	'nux',
 	'plugins',
+	'redux-routine',
 	'shortcode',
+	'token-list',
+	'url',
 	'viewport',
+	'wordcount',
 ];
 
 const externals = {
@@ -161,8 +167,14 @@ const config = {
 		rules: [
 			{
 				test: /\.js$/,
+				use: [ 'source-map-loader' ],
+				enforce: 'pre',
+			},
+			{
+				test: /\.js$/,
 				exclude: [
 					/block-serialization-spec-parser/,
+					/is-shallow-equal/,
 					/node_modules/,
 				],
 				use: 'babel-loader',
@@ -170,28 +182,28 @@ const config = {
 			{
 				test: /style\.s?css$/,
 				include: [
-					/core-blocks/,
+					/block-library/,
 				],
 				use: blocksCSSPlugin.extract( extractConfig ),
 			},
 			{
 				test: /editor\.s?css$/,
 				include: [
-					/core-blocks/,
+					/block-library/,
 				],
 				use: editBlocksCSSPlugin.extract( extractConfig ),
 			},
 			{
 				test: /theme\.s?css$/,
 				include: [
-					/core-blocks/,
+					/block-library/,
 				],
 				use: themeBlocksCSSPlugin.extract( extractConfig ),
 			},
 			{
 				test: /\.s?css$/,
 				exclude: [
-					/core-blocks/,
+					/block-library/,
 				],
 				use: mainCSSExtractTextPlugin.extract( extractConfig ),
 			},
@@ -233,8 +245,27 @@ const config = {
 			'api-fetch',
 			'deprecated',
 			'dom-ready',
-			'is-shallow-equal',
+			'redux-routine',
 		].map( camelCaseDash ) ),
+		new CopyWebpackPlugin(
+			gutenbergPackages.map( ( packageName ) => ( {
+				from: `./packages/${ packageName }/build-style/*.css`,
+				to: `./build/${ packageName }/`,
+				flatten: true,
+				transform: ( content ) => {
+					if ( config.mode === 'production' ) {
+						return postcss( [
+							require( 'cssnano' )( {
+								preset: 'default',
+							} ),
+						] )
+							.process( content, { from: 'src/app.css', to: 'dest/app.css' } )
+							.then( ( result ) => result.css );
+					}
+					return content;
+				},
+			} ) )
+		),
 	],
 	stats: {
 		children: false,

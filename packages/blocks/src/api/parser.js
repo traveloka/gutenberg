@@ -9,7 +9,6 @@ import { flow, castArray, mapValues, omit, stubFalse } from 'lodash';
  */
 import { autop } from '@wordpress/autop';
 import { applyFilters } from '@wordpress/hooks';
-import deprecated from '@wordpress/deprecated';
 import { parse as grammarParse } from '@wordpress/block-serialization-spec-parser';
 
 /**
@@ -19,7 +18,7 @@ import { getBlockType, getUnknownTypeHandlerName } from './registration';
 import { createBlock } from './factory';
 import { isValidBlock } from './validation';
 import { getCommentDelimitedContent } from './serializer';
-import { attr, prop, html, text, query, node, children } from './matchers';
+import { attr, html, text, query, node, children, prop } from './matchers';
 
 /**
  * Higher-order hpq matcher which enhances an attribute matcher to return true
@@ -105,14 +104,6 @@ export function matcherFromSource( sourceConfig ) {
 			}
 
 			return matcher;
-		case 'property':
-			deprecated( '`property` source', {
-				version: '3.4',
-				alternative: 'equivalent `text`, `html`, or `attribute` source, or comment attribute',
-				plugin: 'Gutenberg',
-			} );
-
-			return prop( sourceConfig.selector, sourceConfig.property );
 		case 'html':
 			return html( sourceConfig.selector );
 		case 'text':
@@ -124,6 +115,11 @@ export function matcherFromSource( sourceConfig ) {
 		case 'query':
 			const subMatchers = mapValues( sourceConfig.query, matcherFromSource );
 			return query( sourceConfig.selector, subMatchers );
+		case 'tag':
+			return flow( [
+				prop( sourceConfig.selector, 'nodeName' ),
+				( value ) => value.toLowerCase(),
+			] );
 		default:
 			// eslint-disable-next-line no-console
 			console.error( `Unknown source type "${ sourceConfig.source }"` );
@@ -169,6 +165,7 @@ export function getBlockAttribute( attributeKey, attributeSchema, innerHTML, com
 		case 'children':
 		case 'node':
 		case 'query':
+		case 'tag':
 			value = parseWithAttributeSchema( innerHTML, attributeSchema );
 			break;
 	}

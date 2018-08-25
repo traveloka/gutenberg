@@ -177,7 +177,7 @@ describe( 'validation', () => {
 			it( 'returns true if the same style', () => {
 				const isEqual = isEqualAttributesOfName.style(
 					'background-image: url( "https://wordpress.org/img.png" ); color: red;',
-					'color: red;   background-image: url(\'https://wordpress.org/img.png\n);'
+					"color: red;   background-image: url('https://wordpress.org/img.png\n);"
 				);
 
 				expect( isEqual ).toBe( true );
@@ -186,7 +186,7 @@ describe( 'validation', () => {
 			it( 'returns false if not same style', () => {
 				const isEqual = isEqualAttributesOfName.style(
 					'background-image: url( "https://wordpress.org/img.png" ); color: red;',
-					'color: red;  font-size: 13px; background-image: url(\'https://wordpress.org/img.png\');'
+					"color: red;  font-size: 13px; background-image: url('https://wordpress.org/img.png');"
 				);
 
 				expect( isEqual ).toBe( false );
@@ -443,6 +443,35 @@ describe( 'validation', () => {
 			);
 
 			expect( isEquivalent ).toBe( true );
+		} );
+
+		it( 'should return true when comparing empty strings', () => {
+			const isEquivalent = isEquivalentHTML(
+				'',
+				'',
+			);
+
+			expect( isEquivalent ).toBe( true );
+		} );
+
+		it( 'should return false if supplied malformed HTML', () => {
+			const isEquivalent = isEquivalentHTML(
+				'<blockquote class="wp-block-quote">fsdfsdfsd<p>fdsfsdfsdd</pfd fd fd></blockquote>',
+				'<blockquote class="wp-block-quote">fsdfsdfsd<p>fdsfsdfsdd</p></blockquote>',
+			);
+
+			expect( console ).toHaveWarned();
+			expect( isEquivalent ).toBe( false );
+		} );
+
+		it( 'should return false if supplied two sets of malformed HTML', () => {
+			const isEquivalent = isEquivalentHTML(
+				'<div>fsdfsdfsd<p>fdsfsdfsdd</pfd fd fd></div>',
+				'<blockquote>fsdfsdfsd<p>fdsfsdfsdd</p a></blockquote>',
+			);
+
+			expect( console ).toHaveWarned();
+			expect( isEquivalent ).toBe( false );
 		} );
 	} );
 

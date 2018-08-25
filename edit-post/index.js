@@ -1,10 +1,13 @@
 /**
  * WordPress dependencies
  */
-import { registerCoreBlocks } from '@wordpress/core-blocks';
+import '@wordpress/core-data';
+import '@wordpress/editor';
+import '@wordpress/nux';
+import '@wordpress/viewport';
+import { registerCoreBlocks } from '@wordpress/block-library';
 import { render, unmountComponentAtNode } from '@wordpress/element';
 import { dispatch } from '@wordpress/data';
-import deprecated from '@wordpress/deprecated';
 
 /**
  * Internal dependencies
@@ -54,14 +57,6 @@ export function initializeEditor( id, postType, postId, settings, overridePost )
 	const target = document.getElementById( id );
 	const reboot = reinitializeEditor.bind( null, postType, postId, target, settings, overridePost );
 
-	// Global deprecations which cannot otherwise be injected into known usage.
-	deprecated( 'block `id` prop in `edit` function', {
-		version: '3.4',
-		alternative: 'block `clientId` prop',
-		plugin: 'Gutenberg',
-		hint: 'This is a global warning, shown regardless of whether blocks exist using the deprecated prop.',
-	} );
-
 	registerCoreBlocks();
 
 	dispatch( 'core/nux' ).triggerGuide( [
@@ -83,6 +78,7 @@ export function initializeEditor( id, postType, postId, settings, overridePost )
 	};
 }
 
+export { default as PluginBlockSettingsMenuItem } from './components/block-settings-menu/plugin-block-settings-menu-item';
 export { default as PluginPostPublishPanel } from './components/sidebar/plugin-post-publish-panel';
 export { default as PluginPostStatusInfo } from './components/sidebar/plugin-post-status-info';
 export { default as PluginPrePublishPanel } from './components/sidebar/plugin-pre-publish-panel';

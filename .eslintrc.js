@@ -93,10 +93,6 @@ module.exports = {
 				message: 'Use @wordpress/nux as import path instead.',
 			},
 			{
-				selector: 'ImportDeclaration[source.value=/^utils(\\u002F|$)/]',
-				message: 'Use @wordpress/utils as import path instead.',
-			},
-			{
 				selector: 'ImportDeclaration[source.value=/^edit-post(\\u002F|$)/]',
 				message: 'Use @wordpress/edit-post as import path instead.',
 			},
@@ -113,8 +109,8 @@ module.exports = {
 				"message": "Use @wordpress/core-data as import path instead."
 			},
 			{
-				"selector": "ImportDeclaration[source.value=/^core-blocks$/]",
-				"message": "Use @wordpress/core-blocks as import path instead."
+				"selector": "ImportDeclaration[source.value=/^block-library$/]",
+				"message": "Use @wordpress/block-library as import path instead."
 			},
 			{
 				selector: 'CallExpression[callee.name="deprecated"] Property[key.name="version"][value.value=/' + majorMinorRegExp + '/]',
@@ -130,7 +126,7 @@ module.exports = {
 			},
 			{
 				selector: 'ImportDeclaration[source.value="lodash"] Identifier.imported[name="memoize"]',
-				message: 'Use memize instead of Lodash\'s memoize',
+				message: 'Use memize instead of Lodash’s memoize',
 			},
 			{
 				selector: 'CallExpression[callee.object.name="page"][callee.property.name="waitFor"]',

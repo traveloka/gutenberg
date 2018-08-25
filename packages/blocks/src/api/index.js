@@ -37,10 +37,11 @@ export {
 	getBlockTypes,
 	getBlockSupport,
 	hasBlockSupport,
-	isSharedBlock,
+	isReusableBlock,
 	getChildBlockNames,
 	hasChildBlocks,
 	unstable__bootstrapServerSideBlockDefinitions, // eslint-disable-line camelcase
+	registerBlockStyle,
 } from './registration';
 export {
 	isUnmodifiedDefaultBlock,

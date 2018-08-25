@@ -4,11 +4,51 @@
 
 ## Modifying Blocks
 
-To modify the behavior of existing blocks, Gutenberg exposes the following Filters:
+To modify the behavior of existing blocks, Gutenberg exposes several APIs:
+
+### Block Style Variations
+
+Block Style Variations allow providing alternative styles to existing blocks. They work by adding a className to the block's wrapper. This className can be used to provide an alternative styling for the block if the style variation is selected.
+
+_Example:_
+
+```js
+wp.blocks.registerBlockStyle( 'core/quote', 'fancy-quote' );
+```
+
+The example above registers a block style variation called `fancy-quote` to the `core/quote` block. When the user selects this block style variation from the styles selector, an `is-style-fancy-quote` className will be added to the block's wrapper.
+
+### Filters
+
+Extensing blocks can involve more than just providing alternative styles, in this case, you can use one of the following filters to extend the block settings.
 
 #### `blocks.registerBlockType`
 
 Used to filter the block settings. It receives the block settings and the name of the block the registered block as arguments.
+
+_Example:_
+
+Ensure that List blocks are saved with the canonical generated class name (`wp-block-list`):
+
+```js
+function addListBlockClassName( settings, name ) {
+	if ( name !== 'core/list' ) {
+		return settings;
+	}
+
+	return lodash.assign( {}, settings, {
+		supports: lodash.assign( {}, settings.supports, {
+			className: true
+		} ),
+	} );
+}
+
+wp.hooks.addFilter(
+	'blocks.registerBlockType',
+	'my-plugin/class-names/list-block',
+	addListBlockClassName
+);
+```
 
 #### `blocks.getSaveElement`
 
@@ -24,7 +64,7 @@ Adding a background by default to all blocks.
 
 ```js
 function addBackgroundColorStyle( props ) {
-	return Object.assign( props, { style: { backgroundColor: 'red' } } );
+	return lodash.assign( props, { style: { backgroundColor: 'red' } } );
 }
 
 wp.hooks.addFilter(
@@ -115,11 +155,11 @@ var el = wp.element.createElement;
 
 var withDataAlign = wp.compose.createHigherOrderComponent( function( BlockListBlock ) {
 	return function( props ) {
-		var newProps = Object.assign(
+		var newProps = lodash.assign(
 			{},
 			props,
 			{
-				wrapperProps: Object.assign(
+				wrapperProps: lodash.assign(
 					{},
 					props.wrapperProps,
 					{
@@ -146,7 +186,7 @@ wp.hooks.addFilter( 'editor.BlockListBlock', 'my-plugin/with-data-align', withDa
 Adding blocks is easy enough, removing them is as easy. Plugin or theme authors have the possibility to "unregister" blocks.
 
 ```js
-// myp-lugin.js
+// my-plugin.js
 
 wp.blocks.unregisterBlockType( 'core/verse' );
 ```
